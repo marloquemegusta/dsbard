@@ -49,6 +49,11 @@ static bool live_glide = false;
 static PrintConsole top_console;
 static int bottom_bitmap_bg = -1;
 static u16* bottom_bitmap = nullptr;
+static bool bottom_needs_redraw = true;
+static int rendered_bottom_key = -2;
+static int rendered_octave = -1;
+static int rendered_track = -1;
+static int rendered_timbre = -1;
 static int last_loop_note[TRACKS] = {-1, -1, -1};
 static uint32_t last_phase[TRACKS] = {0, 0, 0};
 static uint32_t flash_until = 0;
@@ -285,10 +290,11 @@ static const uint8_t* glyph(char c) {
     static const uint8_t glyphs[][6] = {
         {'A', 7, 5, 7, 5, 5}, {'B', 6, 5, 6, 5, 6}, {'C', 7, 4, 4, 4, 7},
         {'D', 6, 5, 5, 5, 6}, {'E', 7, 4, 6, 4, 7}, {'F', 7, 4, 6, 4, 4},
-        {'G', 7, 4, 5, 5, 7}, {'K', 5, 5, 6, 5, 5}, {'L', 4, 4, 4, 4, 7},
+        {'G', 7, 4, 5, 5, 7}, {'H', 5, 5, 7, 5, 5}, {'I', 7, 2, 2, 2, 7},
+        {'K', 5, 5, 6, 5, 5}, {'L', 4, 4, 4, 4, 7}, {'N', 5, 7, 7, 7, 5},
         {'O', 7, 5, 5, 5, 7}, {'P', 6, 5, 6, 4, 4}, {'Q', 7, 5, 7, 2, 1},
         {'R', 6, 5, 6, 5, 5}, {'S', 7, 4, 7, 1, 7}, {'T', 7, 2, 2, 2, 2},
-        {'U', 5, 5, 5, 5, 7}, {'0', 7, 5, 5, 5, 7}, {'1', 2, 6, 2, 2, 7},
+        {'U', 5, 5, 5, 5, 7}, {'V', 5, 5, 5, 5, 2}, {'0', 7, 5, 5, 5, 7},
         {'2', 6, 1, 2, 4, 7}, {'3', 6, 1, 6, 1, 6}, {'4', 5, 5, 7, 1, 1},
         {'5', 7, 4, 6, 1, 6}, {'6', 3, 4, 7, 5, 7}, {'#', 5, 7, 5, 7, 5}
     };
@@ -310,19 +316,52 @@ static void draw_text_bitmap(int x, int y, const char* text, u16 color, int scal
     }
 }
 
-static void draw_bottom(int key) {
-    // 16-bit bitmap backgrounds use bit 15 as the opaque flag.
+static void fill_rect(int x0, int y0, int x1, int y1, u16 color) {
+    for (int y = y0; y <= y1; ++y)
+        for (int x = x0; x <= x1; ++x)
+            bottom_bitmap[y * 256 + x] = color;
+}
+
+static void paint_bottom_band(int index, bool active) {
+    if (index < 0 || index >= KEY_COUNT) return;
     const u16 opaque = BIT(15);
-    const u16 background = opaque | RGB15(1, 1, 2);
     const u16 natural = opaque | RGB15(5, 8, 14);
     const u16 sharp = opaque | RGB15(3, 4, 8);
     const u16 separator = opaque | RGB15(14, 18, 24);
-    const u16 active = opaque | RGB15(20, 25, 31);
+    const u16 active_color = opaque | RGB15(20, 25, 31);
+    int left = (index * 256) / KEY_COUNT;
+    int right = ((index + 1) * 256) / KEY_COUNT;
+    u16 fill = active ? active_color : ((index == 1 || index == 3 || index == 6 || index == 8 || index == 10) ? sharp : natural);
+    for (int y = 38; y < 192; ++y)
+        for (int x = left + 1; x < right; ++x)
+            bottom_bitmap[y * 256 + x] = fill;
+    for (int y = 36; y < 192; ++y) bottom_bitmap[y * 256 + left] = separator;
+    if (active) {
+        for (int x = left + 1; x < right; ++x) {
+            bottom_bitmap[36 * 256 + x] = separator;
+            bottom_bitmap[37 * 256 + x] = separator;
+        }
+    }
+}
+
+static void draw_bottom_full(int key) {
+    // 16-bit bitmap backgrounds use bit 15 as the opaque flag.
+    const u16 opaque = BIT(15);
+    const u16 background = opaque | RGB15(1, 1, 2);
+    const u16 separator = opaque | RGB15(14, 18, 24);
     const u16 label = opaque | RGB15(31, 31, 31);
     for (int y = 0; y < 192; ++y)
         for (int x = 0; x < 256; ++x)
             bottom_bitmap[y * 256 + x] = background;
 
+    const u16 panel = opaque | RGB15(8, 12, 18);
+    const u16 line = opaque | RGB15(16, 23, 32);
+    fill_rect(3, 2, 52, 19, panel);
+    fill_rect(56, 2, 133, 19, panel);
+    fill_rect(137, 2, 252, 19, panel);
+    for (int x = 3; x <= 52; ++x) { bottom_bitmap[2 * 256 + x] = line; bottom_bitmap[19 * 256 + x] = line; }
+    for (int x = 56; x <= 133; ++x) { bottom_bitmap[2 * 256 + x] = line; bottom_bitmap[19 * 256 + x] = line; }
+    for (int x = 137; x <= 252; ++x) { bottom_bitmap[2 * 256 + x] = line; bottom_bitmap[19 * 256 + x] = line; }
     draw_text_bitmap(6, 5, "OCT", label);
     draw_text_bitmap(34, 5, octave == 4 ? "4" : (octave == 5 ? "5" : (octave == 6 ? "6" : "2")), label);
     draw_text_bitmap(58, 5, "TRACK", label);
@@ -331,15 +370,26 @@ static void draw_bottom(int key) {
 
     for (int i = 0; i < KEY_COUNT; ++i) {
         int left = (i * 256) / KEY_COUNT;
-        int right = ((i + 1) * 256) / KEY_COUNT;
-        u16 fill = i == key ? active : ((i == 1 || i == 3 || i == 6 || i == 8 || i == 10) ? sharp : natural);
-        for (int y = 38; y < 192; ++y)
-            for (int x = left + 1; x < right; ++x)
-                bottom_bitmap[y * 256 + x] = fill;
-        for (int y = 36; y < 192; ++y) bottom_bitmap[y * 256 + left] = separator;
+        paint_bottom_band(i, i == key);
         draw_text_bitmap(left + 5, 24, NOTE_NAMES[i], label, 2);
     }
     bottom_bitmap[191 * 256 + 255] = separator;
+    rendered_bottom_key = key;
+    rendered_octave = octave;
+    rendered_track = selected_track;
+    rendered_timbre = timbre;
+    bottom_needs_redraw = false;
+}
+
+static void draw_bottom(int key) {
+    if (bottom_needs_redraw || rendered_octave != octave || rendered_track != selected_track || rendered_timbre != timbre) {
+        draw_bottom_full(key);
+        return;
+    }
+    if (key == rendered_bottom_key) return;
+    paint_bottom_band(rendered_bottom_key, false);
+    paint_bottom_band(key, true);
+    rendered_bottom_key = key;
 }
 
 int main() {
