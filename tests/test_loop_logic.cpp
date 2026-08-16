@@ -15,6 +15,16 @@ int main() {
     Track track{};
     track.origin_ms = 5000;
     assert(phase_ms(7250 - track.origin_ms, 1000) == 250);
+    int previous_midi = midi_for_key(4, key_for_x(0));
+    for (int x = 1; x < 256; ++x) {
+        int midi = midi_for_key(4, key_for_x((uint16_t)x));
+        assert(midi >= previous_midi);
+        previous_midi = midi;
+    }
+    assert(key_for_x(0) == 0);
+    assert(key_for_x(21) == 0);
+    assert(key_for_x(22) == 1);
+    assert(key_for_x(255) == 11);
     assert(sizeof(track.events) / sizeof(track.events[0]) == 96);
     return 0;
 }

@@ -47,7 +47,8 @@ static int live_target_note = -1;
 static uint32_t live_transition_started = 0;
 static bool live_glide = false;
 static PrintConsole top_console;
-static PrintConsole bottom_console;
+static int bottom_bitmap_bg = -1;
+static u16* bottom_bitmap = nullptr;
 static int last_loop_note[TRACKS] = {-1, -1, -1};
 static uint32_t last_phase[TRACKS] = {0, 0, 0};
 static uint32_t flash_until = 0;
@@ -98,7 +99,7 @@ static void close_open_note(uint32_t at) {
 }
 
 static void begin_note(int key, uint32_t at, bool glide) {
-    int midi = 12 * (octave + 1) + key;
+    int midi = loop_logic::midi_for_key(octave, key);
     if (live_note != midi) {
         if (glide && live_voice >= 0 && live_note >= 0 && !(live_glide && live_target_note == midi)) {
             live_target_note = midi;
@@ -279,29 +280,78 @@ static void draw_top() {
     iprintf("\x1b[13;0HXY TIMBRE/SUSTAIN  L VIB  R GLIDE");
 }
 
-static void draw_bottom(int key) {
-    consoleSelect(&bottom_console);
-    iprintf("\x1b[1;0HOCT %d   TRACK %d   %s", octave, selected_track + 1, TIMBRE_NAMES[timbre]);
-    // The text console is 32 columns wide: two columns per note keeps all 12
-    // labels on one line and prevents wrapping that could suggest shared keys.
-    iprintf("\x1b[4;0H");
-    for (int i = 0; i < KEY_COUNT; ++i) iprintf("%-2s", NOTE_NAMES[i]);
-    for (int row = 7; row < 17; ++row) {
-        for (int i = 0; i <= KEY_COUNT; ++i)
-            iprintf("\x1b[%d;%dH|", row, i * 2);
-        for (int i = 0; i < KEY_COUNT; ++i)
-            iprintf("\x1b[%d;%dH%c", row, i * 2 + 1, i == key ? '#' : ' ');
+static const uint8_t* glyph(char c) {
+    static const uint8_t blank[5] = {0, 0, 0, 0, 0};
+    static const uint8_t glyphs[][6] = {
+        {'A', 7, 5, 7, 5, 5}, {'B', 6, 5, 6, 5, 6}, {'C', 7, 4, 4, 4, 7},
+        {'D', 6, 5, 5, 5, 6}, {'E', 7, 4, 6, 4, 7}, {'F', 7, 4, 6, 4, 4},
+        {'G', 7, 4, 5, 5, 7}, {'K', 5, 5, 6, 5, 5}, {'L', 4, 4, 4, 4, 7},
+        {'O', 7, 5, 5, 5, 7}, {'P', 6, 5, 6, 4, 4}, {'Q', 7, 5, 7, 2, 1},
+        {'R', 6, 5, 6, 5, 5}, {'S', 7, 4, 7, 1, 7}, {'T', 7, 2, 2, 2, 2},
+        {'U', 5, 5, 5, 5, 7}, {'0', 7, 5, 5, 5, 7}, {'1', 2, 6, 2, 2, 7},
+        {'2', 6, 1, 2, 4, 7}, {'3', 6, 1, 6, 1, 6}, {'4', 5, 5, 7, 1, 1},
+        {'5', 7, 4, 6, 1, 6}, {'6', 3, 4, 7, 5, 7}, {'#', 5, 7, 5, 7, 5}
+    };
+    for (unsigned i = 0; i < sizeof(glyphs) / sizeof(glyphs[0]); ++i)
+        if (glyphs[i][0] == (uint8_t)c) return &glyphs[i][1];
+    return blank;
+}
+
+static void draw_text_bitmap(int x, int y, const char* text, u16 color, int scale = 2) {
+    for (; *text; ++text) {
+        const uint8_t* rows = glyph(*text);
+        for (int row = 0; row < 5; ++row)
+            for (int col = 0; col < 3; ++col)
+                if (rows[row] & (1 << (2 - col)))
+                    for (int dy = 0; dy < scale; ++dy)
+                        for (int dx = 0; dx < scale; ++dx)
+                            bottom_bitmap[(y + row * scale + dy) * 256 + x + col * scale + dx] = color;
+        x += 4 * scale;
     }
-    iprintf("\x1b[18;0HTOUCH ANY STRIPE TO PLAY");
+}
+
+static void draw_bottom(int key) {
+    // 16-bit bitmap backgrounds use bit 15 as the opaque flag.
+    const u16 opaque = BIT(15);
+    const u16 background = opaque | RGB15(1, 1, 2);
+    const u16 natural = opaque | RGB15(5, 8, 14);
+    const u16 sharp = opaque | RGB15(3, 4, 8);
+    const u16 separator = opaque | RGB15(14, 18, 24);
+    const u16 active = opaque | RGB15(20, 25, 31);
+    const u16 label = opaque | RGB15(31, 31, 31);
+    for (int y = 0; y < 192; ++y)
+        for (int x = 0; x < 256; ++x)
+            bottom_bitmap[y * 256 + x] = background;
+
+    draw_text_bitmap(6, 5, "OCT", label);
+    draw_text_bitmap(34, 5, octave == 4 ? "4" : (octave == 5 ? "5" : (octave == 6 ? "6" : "2")), label);
+    draw_text_bitmap(58, 5, "TRACK", label);
+    draw_text_bitmap(112, 5, selected_track == 0 ? "1" : (selected_track == 1 ? "2" : "3"), label);
+    draw_text_bitmap(140, 5, TIMBRE_NAMES[timbre], label, 1);
+
+    for (int i = 0; i < KEY_COUNT; ++i) {
+        int left = (i * 256) / KEY_COUNT;
+        int right = ((i + 1) * 256) / KEY_COUNT;
+        u16 fill = i == key ? active : ((i == 1 || i == 3 || i == 6 || i == 8 || i == 10) ? sharp : natural);
+        for (int y = 38; y < 192; ++y)
+            for (int x = left + 1; x < right; ++x)
+                bottom_bitmap[y * 256 + x] = fill;
+        for (int y = 36; y < 192; ++y) bottom_bitmap[y * 256 + left] = separator;
+        draw_text_bitmap(left + 5, 24, NOTE_NAMES[i], label, 2);
+    }
+    bottom_bitmap[191 * 256 + 255] = separator;
 }
 
 int main() {
     videoSetMode(MODE_0_2D);
-    videoSetModeSub(MODE_0_2D);
+    videoSetModeSub(MODE_5_2D | DISPLAY_BG3_ACTIVE);
     vramSetBankA(VRAM_A_MAIN_BG);
     vramSetBankC(VRAM_C_SUB_BG);
     consoleInit(&top_console, 3, BgType_Text4bpp, BgSize_T_256x256, 31, 0, true, true);
-    consoleInit(&bottom_console, 3, BgType_Text4bpp, BgSize_T_256x256, 31, 0, false, true);
+    bottom_bitmap_bg = bgInitSub(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
+    bgSetPriority(bottom_bitmap_bg, 0);
+    REG_DISPCNT_SUB |= DISPLAY_BG3_ACTIVE;
+    bottom_bitmap = bgGetGfxPtr(bottom_bitmap_bg);
     soundEnable();
     touchPosition touch = {};
     previous_ms = now_ms();
@@ -328,7 +378,7 @@ int main() {
         if ((held & KEY_B) && now - b_hold_started >= 850) { clear_selected(); b_hold_clear = false; }
 
         int key = -1;
-        if (touchRead(&touch) && touch.px < 256 && touch.py < 192) key = (touch.px * KEY_COUNT) / 256;
+        if (touchRead(&touch) && touch.py < 192) key = loop_logic::key_for_x(touch.px);
         if (key >= 0) begin_note(key, now, (held & KEY_R) != 0);
         else if (!(held & KEY_TOUCH) && !(held & KEY_Y)) end_live_note(now);
         update_live_effects(now, held);
