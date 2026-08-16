@@ -1,0 +1,10 @@
+build/
+*.nds
+*.elf
+*.map
+*.gba
+*.dldi
+*.o
+*.d
+.official-nds-examples/
+.tools/
