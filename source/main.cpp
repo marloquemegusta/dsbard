@@ -282,13 +282,15 @@ static void draw_top() {
 static void draw_bottom(int key) {
     consoleSelect(&bottom_console);
     iprintf("\x1b[1;0HOCT %d   TRACK %d   %s", octave, selected_track + 1, TIMBRE_NAMES[timbre]);
+    // The text console is 32 columns wide: two columns per note keeps all 12
+    // labels on one line and prevents wrapping that could suggest shared keys.
     iprintf("\x1b[4;0H");
-    for (int i = 0; i < KEY_COUNT; ++i) iprintf("|%-3s", NOTE_NAMES[i]);
-    iprintf("|");
+    for (int i = 0; i < KEY_COUNT; ++i) iprintf("%-2s", NOTE_NAMES[i]);
     for (int row = 7; row < 17; ++row) {
-        iprintf("\x1b[%d;0H", row);
-        for (int i = 0; i < KEY_COUNT; ++i) iprintf("| %c ", i == key ? '#' : ' ');
-        iprintf("|");
+        for (int i = 0; i <= KEY_COUNT; ++i)
+            iprintf("\x1b[%d;%dH|", row, i * 2);
+        for (int i = 0; i < KEY_COUNT; ++i)
+            iprintf("\x1b[%d;%dH%c", row, i * 2 + 1, i == key ? '#' : ' ');
     }
     iprintf("\x1b[18;0HTOUCH ANY STRIPE TO PLAY");
 }
