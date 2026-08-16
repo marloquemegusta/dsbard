@@ -6,5 +6,7 @@ build/
 *.dldi
 *.o
 *.d
+tests/*.exe
+.codex-journal/
 .official-nds-examples/
 .tools/

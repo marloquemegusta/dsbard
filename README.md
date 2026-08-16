@@ -12,6 +12,10 @@ make
 
 También se puede compilar con la imagen oficial `devkitpro/devkitarm:latest` usando el script `build.ps1`.
 
+Las pruebas de la lógica de loops se ejecutan con `g++ -std=c++17 -Iinclude tests/test_loop_logic.cpp -o tests/test_loop_logic.exe; tests/test_loop_logic.exe`.
+
+Si melonDS está descargado en `.tools/melonds`, `.\run-emulator.ps1` abre la ROM directamente.
+
 ## Controles
 
 - Touchscreen: tocar y arrastrar notas C–B.

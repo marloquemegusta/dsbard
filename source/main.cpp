@@ -17,20 +17,26 @@ static const DutyCycle TIMBRES[4] = {DutyCycle_50, DutyCycle_25, DutyCycle_12, D
 static const char* TIMBRE_NAMES[4] = {"SQUARE", "PULSE", "THIN", "DARK"};
 
 static Track tracks[TRACKS] = {};
+static Track recording_track = {};
 static Track undo_track = {};
 static bool undo_available = false;
+static int undo_slot = 0;
 static int selected_track = 0;
 static int octave = 4;
 static int timbre = 0;
 static int voice_ids[MAX_VOICES] = {-1, -1, -1, -1};
 static int voice_notes[MAX_VOICES] = {-1, -1, -1, -1};
+static int voice_timbres[MAX_VOICES] = {-1, -1, -1, -1};
 static uint32_t transport_ms = 0;
 static uint32_t previous_ms = 0;
 static bool paused = false;
 static bool recording = false;
 static uint32_t record_start = 0;
 static uint16_t record_count = 0;
+static int recording_slot = 0;
+static Track* recording_target = nullptr;
 static int open_note = -1;
+static int open_note_midi = -1;
 static uint32_t open_note_start = 0;
 static uint8_t open_note_timbre = 0;
 static uint32_t b_hold_started = 0;
@@ -59,14 +65,16 @@ static void kill_voice(int slot) {
     if (voice_ids[slot] >= 0) soundKill(voice_ids[slot]);
     voice_ids[slot] = -1;
     voice_notes[slot] = -1;
+    voice_timbres[slot] = -1;
 }
 
 static void set_voice(int slot, int note, int voice_timbre) {
     if (note < 0) { kill_voice(slot); return; }
-    if (voice_notes[slot] == note && voice_ids[slot] >= 0) return;
+    if (voice_notes[slot] == note && voice_timbres[slot] == (voice_timbre & 3) && voice_ids[slot] >= 0) return;
     kill_voice(slot);
     voice_ids[slot] = soundPlayPSG(TIMBRES[voice_timbre & 3], note_frequency(note), 70, 64);
     voice_notes[slot] = note;
+    voice_timbres[slot] = voice_timbre & 3;
 }
 
 static void stop_all_voices() {
@@ -77,16 +85,12 @@ static void stop_all_voices() {
     live_target_note = -1;
 }
 
-static int current_note() {
-    return 12 * (octave + 1) + (open_note < 0 ? 0 : open_note);
-}
-
 static void close_open_note(uint32_t at) {
-    if (!recording || open_note < 0 || record_count >= 96) { open_note = -1; return; }
-    NoteEvent& event = tracks[selected_track].events[record_count++];
+    if (!recording || recording_target == nullptr || open_note < 0 || record_count >= 96) { open_note = -1; return; }
+    NoteEvent& event = recording_target->events[record_count++];
     event.start_ms = open_note_start;
     event.end_ms = at > open_note_start ? at : open_note_start + 1;
-    event.midi_note = current_note();
+    event.midi_note = open_note_midi;
     event.timbre = open_note_timbre;
     open_note = -1;
 }
@@ -94,7 +98,7 @@ static void close_open_note(uint32_t at) {
 static void begin_note(int key, uint32_t at, bool glide) {
     int midi = 12 * (octave + 1) + key;
     if (live_note != midi) {
-        if (glide && live_voice >= 0 && live_note >= 0) {
+        if (glide && live_voice >= 0 && live_note >= 0 && !(live_glide && live_target_note == midi)) {
             live_target_note = midi;
             live_transition_started = at;
             live_glide = true;
@@ -109,6 +113,7 @@ static void begin_note(int key, uint32_t at, bool glide) {
     if (recording && open_note != key) {
         close_open_note(at);
         open_note = key;
+        open_note_midi = midi;
         open_note_start = at - record_start;
         open_note_timbre = (uint8_t)timbre;
     }
@@ -125,41 +130,53 @@ static void end_live_note(uint32_t at) {
 
 static void clear_selected() {
     tracks[selected_track] = {};
-    if (recording) { recording = false; open_note = -1; }
+    if (recording && recording_slot == selected_track) { recording = false; open_note = -1; recording_target = nullptr; }
     for (int i = 0; i < TRACKS; ++i) last_loop_note[i] = -1;
 }
 
 static void start_recording(uint32_t now) {
+    recording_slot = selected_track;
     if (tracks[selected_track].occupied) {
         undo_track = tracks[selected_track];
         undo_available = true;
+        undo_slot = selected_track;
+        recording_track = {};
+        recording_target = &recording_track;
+    } else {
+        tracks[selected_track].event_count = 0;
+        tracks[selected_track].occupied = false;
+        recording_target = &tracks[selected_track];
     }
-    tracks[selected_track].event_count = 0;
-    tracks[selected_track].occupied = false;
     recording = true;
     record_start = now;
     record_count = 0;
     open_note = -1;
+    open_note_midi = -1;
 }
 
 static void stop_recording(uint32_t now) {
     close_open_note(now - record_start);
     uint32_t duration = now - record_start;
     recording = false;
+    Track* target = recording_target;
+    recording_target = nullptr;
     if (duration >= MIN_LOOP_MS && record_count > 0) {
-        tracks[selected_track].duration_ms = duration;
-        tracks[selected_track].event_count = record_count;
-        tracks[selected_track].occupied = true;
-        tracks[selected_track].muted = false;
+        target->duration_ms = duration;
+        target->event_count = record_count;
+        target->occupied = true;
+        target->muted = false;
+        if (target == &recording_track) tracks[recording_slot] = recording_track;
     } else {
-        tracks[selected_track].event_count = 0;
-        tracks[selected_track].occupied = false;
+        if (target == &tracks[recording_slot]) {
+            tracks[recording_slot].event_count = 0;
+            tracks[recording_slot].occupied = false;
+        }
     }
 }
 
 static void undo_recording() {
     if (!undo_available || recording) return;
-    tracks[selected_track] = undo_track;
+    tracks[undo_slot] = undo_track;
     undo_available = false;
 }
 
@@ -186,9 +203,9 @@ static void update_live_effects(uint32_t now, int held) {
     soundSetFreq(live_voice, (u16)frequency);
 }
 
-static int active_track_note(const Track& track, uint32_t phase) {
+static int active_track_event(const Track& track, uint32_t phase) {
     for (uint16_t i = 0; i < track.event_count; ++i)
-        if (loop_logic::event_active(track.events[i], phase)) return track.events[i].midi_note;
+        if (loop_logic::event_active(track.events[i], phase)) return i;
     return -1;
 }
 
@@ -204,12 +221,14 @@ static bool bucket_has_activity(const Track& track, int bucket) {
 
 static void update_loops() {
     for (int i = 0; i < TRACKS; ++i) {
-        int note = -1;
+        int event_index = -1;
         if (tracks[i].occupied && !paused) {
             uint32_t phase = loop_logic::phase_ms(transport_ms, tracks[i].duration_ms);
-            note = active_track_note(tracks[i], phase);
+            event_index = active_track_event(tracks[i], phase);
         }
-        set_voice(i, tracks[i].muted ? -1 : note, note >= 0 ? tracks[i].events[0].timbre : 0);
+        int note = event_index >= 0 ? tracks[i].events[event_index].midi_note : -1;
+        int event_timbre = event_index >= 0 ? tracks[i].events[event_index].timbre : 0;
+        set_voice(i, tracks[i].muted ? -1 : note, event_timbre);
         last_loop_note[i] = note;
     }
 }
@@ -217,9 +236,12 @@ static void update_loops() {
 static void draw_top() {
     consoleSelect(&top_console);
     iprintf("\x1b[1;0HSTYLOPHONE / LOOPER       ");
-    iprintf("\x1b[3;0HTRACK 1 %s %s", selected_track == 0 ? ">" : " ", tracks[0].occupied ? (tracks[0].muted ? "MUTE" : "PLAY") : "EMPTY");
-    iprintf("\x1b[5;0HTRACK 2 %s %s", selected_track == 1 ? ">" : " ", tracks[1].occupied ? (tracks[1].muted ? "MUTE" : "PLAY") : "EMPTY");
-    iprintf("\x1b[7;0HTRACK 3 %s %s", selected_track == 2 ? ">" : " ", tracks[2].occupied ? (tracks[2].muted ? "MUTE" : "PLAY") : "EMPTY");
+    const char* state0 = recording && recording_slot == 0 ? "REC" : (tracks[0].occupied ? (tracks[0].muted ? "MUTE" : "PLAY") : "EMPTY");
+    const char* state1 = recording && recording_slot == 1 ? "REC" : (tracks[1].occupied ? (tracks[1].muted ? "MUTE" : "PLAY") : "EMPTY");
+    const char* state2 = recording && recording_slot == 2 ? "REC" : (tracks[2].occupied ? (tracks[2].muted ? "MUTE" : "PLAY") : "EMPTY");
+    iprintf("\x1b[3;0HTRACK 1 %s %s", selected_track == 0 ? ">" : " ", state0);
+    iprintf("\x1b[5;0HTRACK 2 %s %s", selected_track == 1 ? ">" : " ", state1);
+    iprintf("\x1b[7;0HTRACK 3 %s %s", selected_track == 2 ? ">" : " ", state2);
     for (int i = 0; i < TRACKS; ++i) {
         iprintf("\x1b[%d;0H", 4 + i * 2);
         if (!tracks[i].occupied) { iprintf("EMPTY"); continue; }
