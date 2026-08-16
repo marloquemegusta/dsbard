@@ -54,6 +54,9 @@ static int rendered_bottom_key = -2;
 static int rendered_octave = -1;
 static int rendered_track = -1;
 static int rendered_timbre = -1;
+static int touch_candidate_key = -1;
+static int touch_candidate_frames = 0;
+static int stable_touch_key = -1;
 static int last_loop_note[TRACKS] = {-1, -1, -1};
 static uint32_t last_phase[TRACKS] = {0, 0, 0};
 static uint32_t flash_until = 0;
@@ -370,8 +373,15 @@ static void draw_bottom_full(int key) {
 
     for (int i = 0; i < KEY_COUNT; ++i) {
         int left = (i * 256) / KEY_COUNT;
+        int right = ((i + 1) * 256) / KEY_COUNT;
+        int label_width = (NOTE_NAMES[i][1] == '\0' ? 6 : 14);
+        int label_x = left + ((right - left) - label_width) / 2;
         paint_bottom_band(i, i == key);
-        draw_text_bitmap(left + 5, 24, NOTE_NAMES[i], label, 2);
+        draw_text_bitmap(label_x, 24, NOTE_NAMES[i], label, 2);
+        int marker_x = left + (right - left) / 2;
+        for (int y = 20; y <= 22; ++y)
+            for (int x = marker_x - 1; x <= marker_x + 1; ++x)
+                bottom_bitmap[y * 256 + x] = separator;
     }
     bottom_bitmap[191 * 256 + 255] = separator;
     rendered_bottom_key = key;
@@ -428,7 +438,22 @@ int main() {
         if ((held & KEY_B) && now - b_hold_started >= 850) { clear_selected(); b_hold_clear = false; }
 
         int key = -1;
-        if (touchRead(&touch) && touch.py < 192) key = loop_logic::key_for_x(touch.px);
+        touchRead(&touch);
+        if ((held & KEY_TOUCH) && touch.py < 192) {
+            int sampled_key = loop_logic::key_for_x(touch.px);
+            if (sampled_key == touch_candidate_key) {
+                if (touch_candidate_frames < 2) ++touch_candidate_frames;
+            } else {
+                touch_candidate_key = sampled_key;
+                touch_candidate_frames = 1;
+            }
+            if (touch_candidate_frames >= 2) stable_touch_key = touch_candidate_key;
+            key = stable_touch_key;
+        } else {
+            touch_candidate_key = -1;
+            touch_candidate_frames = 0;
+            stable_touch_key = -1;
+        }
         if (key >= 0) begin_note(key, now, (held & KEY_R) != 0);
         else if (!(held & KEY_TOUCH) && !(held & KEY_Y)) end_live_note(now);
         update_live_effects(now, held);
