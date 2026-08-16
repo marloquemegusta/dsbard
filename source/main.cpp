@@ -49,6 +49,8 @@ static bool live_glide = false;
 static PrintConsole top_console;
 static PrintConsole bottom_console;
 static int last_loop_note[TRACKS] = {-1, -1, -1};
+static uint32_t last_phase[TRACKS] = {0, 0, 0};
+static uint32_t flash_until = 0;
 
 static uint32_t now_ms() {
     return (uint32_t)(((uint64_t)tickGetCount() * 1000u) / TICK_FREQ);
@@ -126,6 +128,12 @@ static void end_live_note(uint32_t at) {
     live_target_note = -1;
     live_glide = false;
     if (recording) close_open_note(at - record_start);
+}
+
+static void refresh_live_timbre() {
+    if (live_voice < 0 || live_note < 0) return;
+    soundKill(live_voice);
+    live_voice = soundPlayPSG(TIMBRES[timbre], note_frequency(live_note), 96, 64);
 }
 
 static void clear_selected() {
@@ -229,6 +237,11 @@ static void update_loops() {
         }
         int note = event_index >= 0 ? tracks[i].events[event_index].midi_note : -1;
         int event_timbre = event_index >= 0 ? tracks[i].events[event_index].timbre : 0;
+        if (tracks[i].occupied && tracks[i].duration_ms > 0) {
+            uint32_t phase = loop_logic::phase_ms(transport_ms, tracks[i].duration_ms);
+            if (!paused && phase < last_phase[i]) flash_until = now_ms() + 80;
+            last_phase[i] = phase;
+        }
         set_voice(i, tracks[i].muted ? -1 : note, event_timbre);
         last_loop_note[i] = note;
     }
@@ -248,10 +261,19 @@ static void draw_top() {
         if (!tracks[i].occupied) { iprintf("EMPTY"); continue; }
         uint32_t phase = loop_logic::phase_ms(transport_ms, tracks[i].duration_ms);
         int playhead = (int)((phase * 20u) / tracks[i].duration_ms);
-        for (int x = 0; x < 20; ++x) iprintf("%c", x == playhead ? '|' : (bucket_has_activity(tracks[i], x) ? '#' : '.'));
+        for (int x = 0; x < 20; ++x) {
+            char activity = tracks[i].muted ? '+' : '#';
+            char marker = bucket_has_activity(tracks[i], x) ? activity : '.';
+            if (x == 0 && now_ms() < flash_until) marker = '*';
+            iprintf("%c", x == playhead ? '|' : marker);
+        }
         iprintf(" %lums", (unsigned long)tracks[i].duration_ms);
     }
-    iprintf("\x1b[10;0H%s %s  OCT %d  T:%s", recording ? "REC" : (paused ? "PAUSED" : "RUN"), b_hold_clear ? "CLEAR?" : "       ", octave, TIMBRE_NAMES[timbre]);
+    uint32_t hold_ms = b_hold_clear ? now_ms() - b_hold_started : 0;
+    int hold_bars = (int)((hold_ms > 850 ? 850 : hold_ms) * 8 / 850);
+    iprintf("\x1b[10;0H%s OCT %d T:%s B[", recording ? "REC" : (paused ? "PAUSED" : "RUN"), octave, TIMBRE_NAMES[timbre]);
+    for (int i = 0; i < 8; ++i) iprintf("%c", i < hold_bars ? '#' : '.');
+    iprintf("]");
     iprintf("\x1b[12;0HA REC  B UNDO/CLEAR  START PAUSE  SELECT MUTE");
     iprintf("\x1b[13;0HXY TIMBRE/SUSTAIN  L VIB  R GLIDE");
 }
@@ -296,7 +318,7 @@ int main() {
         if (down & KEY_RIGHT) selected_track = loop_logic::wrap_track(selected_track, 1);
         if (down & KEY_START) { paused = !paused; if (paused) update_loops(); }
         if (down & KEY_SELECT) tracks[selected_track].muted = !tracks[selected_track].muted;
-        if (down & KEY_X) timbre = (timbre + 1) & 3;
+        if (down & KEY_X) { timbre = (timbre + 1) & 3; refresh_live_timbre(); }
         if (down & KEY_A) { if (recording) stop_recording(now); else start_recording(now); }
         if (down & KEY_B) { b_hold_started = now; b_hold_clear = true; }
         if (!(held & KEY_B) && b_hold_clear) { if (now - b_hold_started < 850) undo_recording(); b_hold_clear = false; }
