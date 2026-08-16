@@ -45,11 +45,16 @@ static int live_note = -1;
 static int live_target_note = -1;
 static uint32_t live_transition_started = 0;
 static bool live_glide = false;
-static PrintConsole top_console;
+static bool sustain_latched = false;
+static bool vibrato_active = false;
 static int bottom_bitmap_bg = -1;
 static u16* bottom_vram = nullptr;
 static u16 bottom_framebuffer[256 * 256] = {};
 static u16* bottom_bitmap = bottom_framebuffer;
+static int top_bitmap_bg = -1;
+static u16* top_vram = nullptr;
+static u16 top_framebuffer[256 * 256] = {};
+static u16* top_bitmap = top_framebuffer;
 static bool bottom_needs_redraw = true;
 static int rendered_bottom_key = -2;
 static int rendered_octave = -1;
@@ -134,6 +139,7 @@ static void end_live_note(uint32_t at) {
     live_note = -1;
     live_target_note = -1;
     live_glide = false;
+    vibrato_active = false;
     if (recording) close_open_note(at - record_start);
 }
 
@@ -157,6 +163,7 @@ static void start_recording(uint32_t now) {
         undo_slot = selected_track;
         recording_track = {};
         recording_target = &recording_track;
+        tracks[selected_track].muted = true;
     } else {
         undo_available = false;
         tracks[selected_track].event_count = 0;
@@ -187,6 +194,8 @@ static void stop_recording(uint32_t now) {
         if (target == &tracks[recording_slot]) {
             tracks[recording_slot].event_count = 0;
             tracks[recording_slot].occupied = false;
+        } else {
+            tracks[recording_slot].muted = false;
         }
     }
 }
@@ -214,8 +223,12 @@ static void update_live_effects(uint32_t now, int held) {
     }
     if (held & KEY_L) {
         int frequency = note_frequency(live_note);
-        int vibrato = ((now / 35) & 1) ? 3 : -3;
+        int vibrato = ((now / 30) & 1) ? 14 : -14;
         soundSetFreq(live_voice, (u16)(frequency + vibrato));
+        vibrato_active = true;
+    } else if (vibrato_active) {
+        soundSetFreq(live_voice, note_frequency(live_note));
+        vibrato_active = false;
     }
 }
 
@@ -234,6 +247,9 @@ static bool bucket_has_activity(const Track& track, int bucket) {
     }
     return false;
 }
+
+static void draw_text_bitmap(u16* target, int x, int y, const char* text, u16 color, int scale = 2);
+static void fill_rect(u16* target, int x0, int y0, int x1, int y1, u16 color);
 
 static void update_loops() {
     for (int i = 0; i < TRACKS; ++i) {
@@ -255,41 +271,78 @@ static void update_loops() {
 }
 
 static void draw_top() {
-    consoleSelect(&top_console);
-    iprintf("\x1b[1;0HSTYLOPHONE / LOOPER       ");
-    const char* state0 = recording && recording_slot == 0 ? "REC" : (tracks[0].occupied ? (tracks[0].muted ? "MUTE" : "PLAY") : "EMPTY");
-    const char* state1 = recording && recording_slot == 1 ? "REC" : (tracks[1].occupied ? (tracks[1].muted ? "MUTE" : "PLAY") : "EMPTY");
-    const char* state2 = recording && recording_slot == 2 ? "REC" : (tracks[2].occupied ? (tracks[2].muted ? "MUTE" : "PLAY") : "EMPTY");
-    iprintf("\x1b[3;0HTRACK 1 %s %s", selected_track == 0 ? ">" : " ", state0);
-    iprintf("\x1b[5;0HTRACK 2 %s %s", selected_track == 1 ? ">" : " ", state1);
-    iprintf("\x1b[7;0HTRACK 3 %s %s", selected_track == 2 ? ">" : " ", state2);
-    for (int i = 0; i < TRACKS; ++i) {
-        iprintf("\x1b[%d;0H", 4 + i * 2);
-        if (!tracks[i].occupied) { iprintf("EMPTY"); continue; }
-        uint32_t phase = loop_logic::phase_ms(transport_ms - tracks[i].origin_ms, tracks[i].duration_ms);
-        int playhead = (int)((phase * 20u) / tracks[i].duration_ms);
-        for (int x = 0; x < 20; ++x) {
-            char activity = tracks[i].muted ? '+' : '#';
-            char marker = bucket_has_activity(tracks[i], x) ? activity : '.';
-            if (x == 0 && now_ms() < flash_until) marker = '*';
-            iprintf("%c", x == playhead ? '|' : marker);
-        }
-        iprintf(" %lums", (unsigned long)tracks[i].duration_ms);
+    const u16 opaque = BIT(15);
+    const u16 background = opaque | RGB15(1, 1, 2);
+    const u16 panel = opaque | RGB15(8, 12, 18);
+    const u16 panel_alt = opaque | RGB15(11, 16, 23);
+    const u16 line = opaque | RGB15(10, 16, 24);
+    const u16 text = opaque | RGB15(31, 31, 31);
+    const u16 accent = opaque | RGB15(20, 25, 31);
+    const u16 green = opaque | RGB15(20, 31, 22);
+    for (int y = 0; y < 192; ++y)
+        for (int x = 0; x < 256; ++x)
+            top_bitmap[y * 256 + x] = background;
+
+    fill_rect(top_bitmap, 4, 4, 251, 25, panel);
+    for (int x = 4; x <= 251; ++x) {
+        top_bitmap[4 * 256 + x] = line;
+        top_bitmap[25 * 256 + x] = line;
     }
-    uint32_t hold_ms = b_hold_clear ? now_ms() - b_hold_started : 0;
-    int hold_bars = (int)((hold_ms > 850 ? 850 : hold_ms) * 8 / 850);
-    iprintf("\x1b[10;0H%s OCT %d T:%s B[", recording ? "REC" : (paused ? "PAUSED" : "RUN"), octave, TIMBRE_NAMES[timbre]);
-    for (int i = 0; i < 8; ++i) iprintf("%c", i < hold_bars ? '#' : '.');
-    iprintf("]");
-    iprintf("\x1b[12;0HA REC  B UNDO/CLEAR  START PAUSE  SELECT MUTE");
-    iprintf("\x1b[13;0HXY TIMBRE/SUSTAIN  L VIB  R GLIDE");
-    iprintf("\x1b[15;0HLIVE ");
+    draw_text_bitmap(top_bitmap, 9, 9, "STYLOPHONE", text, 1);
+    draw_text_bitmap(top_bitmap, 178, 9, paused ? "PAUSED" : (recording ? "REC" : "RUN"), recording ? green : text, 1);
+
+    if (recording && recording_target != nullptr) {
+        recording_target->occupied = true;
+        recording_target->duration_ms = (uint32_t)(now_ms() - record_start);
+        if (recording_target->duration_ms == 0) recording_target->duration_ms = 1;
+        recording_target->origin_ms = 0;
+    }
+
+    for (int i = 0; i < TRACKS; ++i) {
+        int y = 31 + i * 47;
+        bool selected = selected_track == i;
+        bool is_recording = recording && recording_slot == i;
+        const Track& track = tracks[i];
+        const Track& visual_track = is_recording && recording_target != nullptr ? *recording_target : track;
+        const char* state = is_recording ? "REC" : (track.occupied ? (track.muted ? "MUTE" : "PLAY") : "EMPTY");
+        u16 card = selected ? panel_alt : panel;
+        fill_rect(top_bitmap, 4, y, 251, y + 39, card);
+        for (int x = 4; x <= 251; ++x) top_bitmap[y * 256 + x] = selected ? accent : line;
+        draw_text_bitmap(top_bitmap, 9, y + 6, "TRACK", text, 1);
+        char track_number[2] = {(char)('1' + i), '\0'};
+        draw_text_bitmap(top_bitmap, 38, y + 6, track_number, text, 1);
+        draw_text_bitmap(top_bitmap, 52, y + 6, state, is_recording ? green : text, 1);
+        for (int bucket = 0; bucket < 20; ++bucket) {
+            int x = 91 + bucket * 8;
+            bool active = bucket_has_activity(visual_track, bucket);
+            u16 bar = active ? (is_recording || track.muted ? green : accent) : line;
+            fill_rect(top_bitmap, x, y + 24, x + 5, y + (active ? 31 : 27), bar);
+        }
+        if ((track.occupied || is_recording) && visual_track.duration_ms > 0) {
+            uint32_t phase = is_recording
+                ? loop_logic::phase_ms(now_ms() - record_start, visual_track.duration_ms)
+                : loop_logic::phase_ms(transport_ms - visual_track.origin_ms, visual_track.duration_ms);
+            int playhead = 91 + (int)((phase * 160u) / visual_track.duration_ms);
+            fill_rect(top_bitmap, playhead, y + 21, playhead + 1, y + 34, green);
+        }
+    }
+
+    fill_rect(top_bitmap, 4, 177, 251, 188, panel);
+    draw_text_bitmap(top_bitmap, 9, 180, "OCT", text, 1);
+    char octave_text[2] = {(char)('0' + octave), '\0'};
+    draw_text_bitmap(top_bitmap, 25, 180, octave_text, text, 1);
+    draw_text_bitmap(top_bitmap, 39, 180, TIMBRE_NAMES[timbre], text, 1);
+    draw_text_bitmap(top_bitmap, 82, 180, sustain_latched ? "SUSON" : "SUSOFF", sustain_latched ? green : text, 1);
+    char live_text[20];
     if (live_note >= 0) {
         int live_key = live_note % 12;
-        iprintf("%s%d MIDI%d %dHz       ", NOTE_NAMES[live_key], live_note / 12 - 1, live_note, note_frequency(live_note));
+        snprintf(live_text, sizeof(live_text), "%s%d %d%s", NOTE_NAMES[live_key], live_note / 12 - 1,
+                 note_frequency(live_note), vibrato_active ? " VIB" : "");
     } else {
-        iprintf("--                 ");
+        snprintf(live_text, sizeof(live_text), "LIVE --");
     }
+    draw_text_bitmap(top_bitmap, 133, 180, live_text, text, 1);
+    dmaCopy(top_framebuffer, top_vram, 256 * 192 * sizeof(u16));
 }
 
 static const uint8_t* glyph(char c) {
@@ -298,31 +351,31 @@ static const uint8_t* glyph(char c) {
         {'A', 7, 5, 7, 5, 5}, {'B', 6, 5, 6, 5, 6}, {'C', 7, 4, 4, 4, 7},
         {'D', 6, 5, 5, 5, 6}, {'E', 7, 4, 6, 4, 7}, {'F', 7, 4, 6, 4, 4},
         {'G', 7, 4, 5, 5, 7}, {'H', 5, 5, 7, 5, 5}, {'I', 7, 2, 2, 2, 7},
-        {'K', 5, 5, 6, 5, 5}, {'L', 4, 4, 4, 4, 7}, {'N', 5, 7, 7, 7, 5},
+        {'K', 5, 5, 6, 5, 5}, {'L', 4, 4, 4, 4, 7}, {'M', 5, 7, 7, 5, 5}, {'N', 5, 7, 7, 7, 5},
         {'O', 7, 5, 5, 5, 7}, {'P', 6, 5, 6, 4, 4}, {'Q', 7, 5, 7, 2, 1},
         {'R', 6, 5, 6, 5, 5}, {'S', 7, 4, 7, 1, 7}, {'T', 7, 2, 2, 2, 2},
         {'U', 5, 5, 5, 5, 7}, {'V', 5, 5, 5, 5, 2}, {'0', 7, 5, 5, 5, 7},
         {'1', 2, 6, 2, 2, 7}, {'2', 6, 1, 2, 4, 7}, {'3', 6, 1, 6, 1, 6},
         {'4', 5, 5, 7, 1, 1},
-        {'5', 7, 4, 6, 1, 6}, {'6', 3, 4, 7, 5, 7}, {'#', 5, 7, 5, 7, 5}
+        {'5', 7, 4, 6, 1, 6}, {'6', 3, 4, 7, 5, 7}, {'Y', 5, 5, 2, 2, 2}, {'#', 5, 7, 5, 7, 5}
     };
     for (unsigned i = 0; i < sizeof(glyphs) / sizeof(glyphs[0]); ++i)
         if (glyphs[i][0] == (uint8_t)c) return &glyphs[i][1];
     return blank;
 }
 
-static void draw_glyph_bitmap(int x, int y, const uint8_t* rows, u16 color, int scale) {
+static void draw_glyph_bitmap(u16* target, int x, int y, const uint8_t* rows, u16 color, int scale) {
     for (int row = 0; row < 5; ++row)
         for (int col = 0; col < 3; ++col)
             if (rows[row] & (1 << (2 - col)))
                 for (int dy = 0; dy < scale; ++dy)
                     for (int dx = 0; dx < scale; ++dx)
-                        bottom_bitmap[(y + row * scale + dy) * 256 + x + col * scale + dx] = color;
+                        target[(y + row * scale + dy) * 256 + x + col * scale + dx] = color;
 }
 
-static void draw_text_bitmap(int x, int y, const char* text, u16 color, int scale = 2) {
+static void draw_text_bitmap(u16* target, int x, int y, const char* text, u16 color, int scale) {
     for (; *text; ++text) {
-        draw_glyph_bitmap(x, y, glyph(*text), color, scale);
+        draw_glyph_bitmap(target, x, y, glyph(*text), color, scale);
         x += 4 * scale;
     }
 }
@@ -342,8 +395,8 @@ static void draw_note_label(int index, int x, int y, u16 color) {
         {{7, 5, 7, 5, 5}, {5, 7, 5, 7, 5}},
         {{6, 5, 5, 5, 6}, {0, 0, 0, 0, 0}}
     };
-    draw_glyph_bitmap(x, y, note_rows[index][0], color, 2);
-    if (NOTE_NAMES[index][1] == '#') draw_glyph_bitmap(x + 8, y, note_rows[index][1], color, 2);
+    draw_glyph_bitmap(bottom_bitmap, x, y, note_rows[index][0], color, 2);
+    if (NOTE_NAMES[index][1] == '#') draw_glyph_bitmap(bottom_bitmap, x + 8, y, note_rows[index][1], color, 2);
 }
 
 static void present_bottom_full() {
@@ -358,10 +411,10 @@ static void present_bottom_band(int index) {
         dmaCopy(&bottom_framebuffer[y * 256 + left], &bottom_vram[y * 256 + left], (right - left) * sizeof(u16));
 }
 
-static void fill_rect(int x0, int y0, int x1, int y1, u16 color) {
+static void fill_rect(u16* target, int x0, int y0, int x1, int y1, u16 color) {
     for (int y = y0; y <= y1; ++y)
         for (int x = x0; x <= x1; ++x)
-            bottom_bitmap[y * 256 + x] = color;
+            target[y * 256 + x] = color;
 }
 
 static void paint_bottom_band(int index, bool active) {
@@ -398,19 +451,19 @@ static void draw_bottom_full(int key) {
             bottom_bitmap[y * 256 + x] = background;
 
     const u16 panel = opaque | RGB15(8, 12, 18);
-    const u16 line = opaque | RGB15(16, 23, 32);
-    fill_rect(3, 2, 52, 19, panel);
-    fill_rect(56, 2, 133, 19, panel);
-    fill_rect(137, 2, 252, 19, panel);
+    const u16 line = opaque | RGB15(10, 16, 24);
+    fill_rect(bottom_bitmap, 3, 2, 52, 19, panel);
+    fill_rect(bottom_bitmap, 56, 2, 133, 19, panel);
+    fill_rect(bottom_bitmap, 137, 2, 252, 19, panel);
     for (int x = 3; x <= 52; ++x) { bottom_bitmap[2 * 256 + x] = line; bottom_bitmap[19 * 256 + x] = line; }
     for (int x = 56; x <= 133; ++x) { bottom_bitmap[2 * 256 + x] = line; bottom_bitmap[19 * 256 + x] = line; }
     for (int x = 137; x <= 252; ++x) { bottom_bitmap[2 * 256 + x] = line; bottom_bitmap[19 * 256 + x] = line; }
-    draw_text_bitmap(6, 5, "OCT", label);
+    draw_text_bitmap(bottom_bitmap, 6, 5, "OCT", label);
     const char* octave_label = octave == 2 ? "2" : (octave == 3 ? "3" : (octave == 4 ? "4" : (octave == 5 ? "5" : "6")));
-    draw_text_bitmap(34, 5, octave_label, label);
-    draw_text_bitmap(58, 5, "TRACK", label);
-    draw_text_bitmap(112, 5, selected_track == 0 ? "1" : (selected_track == 1 ? "2" : "3"), label);
-    draw_text_bitmap(140, 5, TIMBRE_NAMES[timbre], label, 1);
+    draw_text_bitmap(bottom_bitmap, 34, 5, octave_label, label);
+    draw_text_bitmap(bottom_bitmap, 58, 5, "TRACK", label);
+    draw_text_bitmap(bottom_bitmap, 112, 5, selected_track == 0 ? "1" : (selected_track == 1 ? "2" : "3"), label);
+    draw_text_bitmap(bottom_bitmap, 140, 5, TIMBRE_NAMES[timbre], label, 1);
 
     for (int i = 0; i < KEY_COUNT; ++i) paint_bottom_band(i, i == key);
     for (int i = 0; i < KEY_COUNT; ++i) {
@@ -418,7 +471,7 @@ static void draw_bottom_full(int key) {
         int right = ((i + 1) * 256) / KEY_COUNT;
         int label_width = (NOTE_NAMES[i][1] == '\0' ? 6 : 14);
         int label_x = left + ((right - left) - label_width) / 2;
-        fill_rect(left + 2, 21, right - 3, 35, label_panel);
+        fill_rect(bottom_bitmap, left + 2, 21, right - 3, 35, label_panel);
         draw_note_label(i, label_x, 24, label);
         int marker_x = left + (right - left) / 2;
         for (int y = 20; y <= 22; ++y)
@@ -449,14 +502,16 @@ static void draw_bottom(int key) {
 }
 
 int main() {
-    videoSetMode(MODE_0_2D);
+    videoSetMode(MODE_5_2D | DISPLAY_BG3_ACTIVE);
     videoSetModeSub(MODE_5_2D | DISPLAY_BG3_ACTIVE);
     vramSetBankA(VRAM_A_MAIN_BG);
     vramSetBankC(VRAM_C_SUB_BG);
-    consoleInit(&top_console, 3, BgType_Text4bpp, BgSize_T_256x256, 31, 0, true, true);
+    top_bitmap_bg = bgInit(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
+    bgSetPriority(top_bitmap_bg, 0);
     bottom_bitmap_bg = bgInitSub(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
     bgSetPriority(bottom_bitmap_bg, 0);
     REG_DISPCNT_SUB |= DISPLAY_BG3_ACTIVE;
+    top_vram = bgGetGfxPtr(top_bitmap_bg);
     bottom_vram = bgGetGfxPtr(bottom_bitmap_bg);
     soundEnable();
     touchPosition touch = {};
@@ -478,6 +533,7 @@ int main() {
         if (down & KEY_START) { paused = !paused; if (paused) update_loops(); }
         if (down & KEY_SELECT) tracks[selected_track].muted = !tracks[selected_track].muted;
         if (down & KEY_X) { timbre = (timbre + 1) & 3; refresh_live_timbre(); }
+        if (down & KEY_Y) sustain_latched = !sustain_latched;
         if (down & KEY_A) { if (recording) stop_recording(now); else start_recording(now); }
         if (down & KEY_B) { b_hold_started = now; b_hold_clear = true; }
         if (!(held & KEY_B) && b_hold_clear) { if (now - b_hold_started < 850) undo_recording(); b_hold_clear = false; }
@@ -501,7 +557,7 @@ int main() {
             stable_touch_key = -1;
         }
         if (key >= 0) begin_note(key, now, (held & KEY_R) != 0);
-        else if (!(held & KEY_TOUCH) && !(held & KEY_Y)) end_live_note(now);
+        else if (!(held & KEY_TOUCH) && !sustain_latched && !(held & KEY_Y)) end_live_note(now);
         update_live_effects(now, held);
         update_loops();
         draw_top();
