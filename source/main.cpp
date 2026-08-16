@@ -192,6 +192,16 @@ static int active_track_note(const Track& track, uint32_t phase) {
     return -1;
 }
 
+static bool bucket_has_activity(const Track& track, int bucket) {
+    if (!track.occupied || track.duration_ms == 0) return false;
+    uint32_t begin = (track.duration_ms * (uint32_t)bucket) / 20u;
+    uint32_t end = (track.duration_ms * (uint32_t)(bucket + 1)) / 20u;
+    for (uint16_t i = 0; i < track.event_count; ++i) {
+        if (track.events[i].start_ms < end && track.events[i].end_ms > begin) return true;
+    }
+    return false;
+}
+
 static void update_loops() {
     for (int i = 0; i < TRACKS; ++i) {
         int note = -1;
@@ -215,7 +225,7 @@ static void draw_top() {
         if (!tracks[i].occupied) { iprintf("EMPTY"); continue; }
         uint32_t phase = loop_logic::phase_ms(transport_ms, tracks[i].duration_ms);
         int playhead = (int)((phase * 20u) / tracks[i].duration_ms);
-        for (int x = 0; x < 20; ++x) iprintf("%c", x == playhead ? '|' : (last_loop_note[i] >= 0 ? '#' : '.'));
+        for (int x = 0; x < 20; ++x) iprintf("%c", x == playhead ? '|' : (bucket_has_activity(tracks[i], x) ? '#' : '.'));
         iprintf(" %lums", (unsigned long)tracks[i].duration_ms);
     }
     iprintf("\x1b[10;0H%s %s  OCT %d  T:%s", recording ? "REC" : (paused ? "PAUSED" : "RUN"), b_hold_clear ? "CLEAR?" : "       ", octave, TIMBRE_NAMES[timbre]);
@@ -229,10 +239,12 @@ static void draw_bottom(int key) {
     iprintf("\x1b[4;0H");
     for (int i = 0; i < KEY_COUNT; ++i) iprintf("|%-3s", NOTE_NAMES[i]);
     iprintf("|");
-    iprintf("\x1b[7;0H");
-    for (int i = 0; i < KEY_COUNT; ++i) iprintf("| %c ", i == key ? '#' : ' ');
-    iprintf("|");
-    iprintf("\x1b[12;0HTOUCH ANY STRIPE TO PLAY");
+    for (int row = 7; row < 17; ++row) {
+        iprintf("\x1b[%d;0H", row);
+        for (int i = 0; i < KEY_COUNT; ++i) iprintf("| %c ", i == key ? '#' : ' ');
+        iprintf("|");
+    }
+    iprintf("\x1b[18;0HTOUCH ANY STRIPE TO PLAY");
 }
 
 int main() {
