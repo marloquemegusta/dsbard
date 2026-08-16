@@ -13,6 +13,8 @@ int main() {
     assert(event_active(event, 100));
     assert(!event_active(event, 200));
     Track track{};
+    track.origin_ms = 5000;
+    assert(phase_ms(7250 - track.origin_ms, 1000) == 250);
     assert(sizeof(track.events) / sizeof(track.events[0]) == 96);
     return 0;
 }

@@ -171,6 +171,7 @@ static void stop_recording(uint32_t now) {
     recording_target = nullptr;
     if (duration >= MIN_LOOP_MS && record_count > 0) {
         target->duration_ms = duration;
+        target->origin_ms = transport_ms;
         target->event_count = record_count;
         target->occupied = true;
         target->muted = false;
@@ -232,13 +233,13 @@ static void update_loops() {
     for (int i = 0; i < TRACKS; ++i) {
         int event_index = -1;
         if (tracks[i].occupied && !paused) {
-            uint32_t phase = loop_logic::phase_ms(transport_ms, tracks[i].duration_ms);
+            uint32_t phase = loop_logic::phase_ms(transport_ms - tracks[i].origin_ms, tracks[i].duration_ms);
             event_index = active_track_event(tracks[i], phase);
         }
         int note = event_index >= 0 ? tracks[i].events[event_index].midi_note : -1;
         int event_timbre = event_index >= 0 ? tracks[i].events[event_index].timbre : 0;
         if (tracks[i].occupied && tracks[i].duration_ms > 0) {
-            uint32_t phase = loop_logic::phase_ms(transport_ms, tracks[i].duration_ms);
+            uint32_t phase = loop_logic::phase_ms(transport_ms - tracks[i].origin_ms, tracks[i].duration_ms);
             if (!paused && phase < last_phase[i]) flash_until = now_ms() + 80;
             last_phase[i] = phase;
         }
@@ -259,7 +260,7 @@ static void draw_top() {
     for (int i = 0; i < TRACKS; ++i) {
         iprintf("\x1b[%d;0H", 4 + i * 2);
         if (!tracks[i].occupied) { iprintf("EMPTY"); continue; }
-        uint32_t phase = loop_logic::phase_ms(transport_ms, tracks[i].duration_ms);
+        uint32_t phase = loop_logic::phase_ms(transport_ms - tracks[i].origin_ms, tracks[i].duration_ms);
         int playhead = (int)((phase * 20u) / tracks[i].duration_ms);
         for (int x = 0; x < 20; ++x) {
             char activity = tracks[i].muted ? '+' : '#';

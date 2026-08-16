@@ -15,6 +15,7 @@ struct Track {
     bool occupied;
     bool muted;
     uint32_t duration_ms;
+    uint32_t origin_ms;
     uint16_t event_count;
     NoteEvent events[96];
 };
@@ -33,4 +34,3 @@ inline bool event_active(const NoteEvent& event, uint32_t phase) {
 }
 
 } // namespace loop_logic
-
