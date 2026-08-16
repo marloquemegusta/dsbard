@@ -1,7 +1,6 @@
 #include <nds.h>
 #include <calico/system/tick.h>
 #include <stdio.h>
-#include <math.h>
 #include <string.h>
 #include "loop_logic.h"
 
@@ -48,7 +47,9 @@ static uint32_t live_transition_started = 0;
 static bool live_glide = false;
 static PrintConsole top_console;
 static int bottom_bitmap_bg = -1;
-static u16* bottom_bitmap = nullptr;
+static u16* bottom_vram = nullptr;
+static u16 bottom_framebuffer[256 * 256] = {};
+static u16* bottom_bitmap = bottom_framebuffer;
 static bool bottom_needs_redraw = true;
 static int rendered_bottom_key = -2;
 static int rendered_octave = -1;
@@ -66,10 +67,7 @@ static uint32_t now_ms() {
 }
 
 static uint16_t note_frequency(int midi) {
-    double frequency = 440.0 * pow(2.0, (midi - 69) / 12.0);
-    if (frequency < 40.0) frequency = 40.0;
-    if (frequency > 16000.0) frequency = 16000.0;
-    return (uint16_t)frequency;
+    return loop_logic::frequency_for_midi(midi);
 }
 
 static void kill_voice(int slot) {
@@ -114,8 +112,8 @@ static void begin_note(int key, uint32_t at, bool glide) {
             live_transition_started = at;
             live_glide = true;
         } else {
-            if (live_voice >= 0) soundKill(live_voice);
-            live_voice = soundPlayPSG(TIMBRES[timbre], note_frequency(midi), 96, 64);
+            if (live_voice >= 0) soundSetFreq(live_voice, note_frequency(midi));
+            else live_voice = soundPlayPSG(TIMBRES[timbre], note_frequency(midi), 96, 64);
             live_note = midi;
             live_target_note = midi;
             live_glide = false;
@@ -298,7 +296,8 @@ static const uint8_t* glyph(char c) {
         {'O', 7, 5, 5, 5, 7}, {'P', 6, 5, 6, 4, 4}, {'Q', 7, 5, 7, 2, 1},
         {'R', 6, 5, 6, 5, 5}, {'S', 7, 4, 7, 1, 7}, {'T', 7, 2, 2, 2, 2},
         {'U', 5, 5, 5, 5, 7}, {'V', 5, 5, 5, 5, 2}, {'0', 7, 5, 5, 5, 7},
-        {'2', 6, 1, 2, 4, 7}, {'3', 6, 1, 6, 1, 6}, {'4', 5, 5, 7, 1, 1},
+        {'1', 2, 6, 2, 2, 7}, {'2', 6, 1, 2, 4, 7}, {'3', 6, 1, 6, 1, 6},
+        {'4', 5, 5, 7, 1, 1},
         {'5', 7, 4, 6, 1, 6}, {'6', 3, 4, 7, 5, 7}, {'#', 5, 7, 5, 7, 5}
     };
     for (unsigned i = 0; i < sizeof(glyphs) / sizeof(glyphs[0]); ++i)
@@ -306,17 +305,51 @@ static const uint8_t* glyph(char c) {
     return blank;
 }
 
+static void draw_glyph_bitmap(int x, int y, const uint8_t* rows, u16 color, int scale) {
+    for (int row = 0; row < 5; ++row)
+        for (int col = 0; col < 3; ++col)
+            if (rows[row] & (1 << (2 - col)))
+                for (int dy = 0; dy < scale; ++dy)
+                    for (int dx = 0; dx < scale; ++dx)
+                        bottom_bitmap[(y + row * scale + dy) * 256 + x + col * scale + dx] = color;
+}
+
 static void draw_text_bitmap(int x, int y, const char* text, u16 color, int scale = 2) {
     for (; *text; ++text) {
-        const uint8_t* rows = glyph(*text);
-        for (int row = 0; row < 5; ++row)
-            for (int col = 0; col < 3; ++col)
-                if (rows[row] & (1 << (2 - col)))
-                    for (int dy = 0; dy < scale; ++dy)
-                        for (int dx = 0; dx < scale; ++dx)
-                            bottom_bitmap[(y + row * scale + dy) * 256 + x + col * scale + dx] = color;
+        draw_glyph_bitmap(x, y, glyph(*text), color, scale);
         x += 4 * scale;
     }
+}
+
+static void draw_note_label(int index, int x, int y, u16 color) {
+    static const uint8_t note_rows[KEY_COUNT][2][5] = {
+        {{7, 4, 4, 4, 7}, {0, 0, 0, 0, 0}},
+        {{7, 4, 4, 4, 7}, {5, 7, 5, 7, 5}},
+        {{6, 5, 5, 5, 6}, {0, 0, 0, 0, 0}},
+        {{6, 5, 5, 5, 6}, {5, 7, 5, 7, 5}},
+        {{7, 4, 6, 4, 7}, {0, 0, 0, 0, 0}},
+        {{7, 4, 6, 4, 4}, {0, 0, 0, 0, 0}},
+        {{7, 4, 6, 4, 4}, {5, 7, 5, 7, 5}},
+        {{7, 4, 5, 5, 7}, {0, 0, 0, 0, 0}},
+        {{7, 4, 5, 5, 7}, {5, 7, 5, 7, 5}},
+        {{7, 5, 7, 5, 5}, {0, 0, 0, 0, 0}},
+        {{7, 5, 7, 5, 5}, {5, 7, 5, 7, 5}},
+        {{6, 5, 5, 5, 6}, {0, 0, 0, 0, 0}}
+    };
+    draw_glyph_bitmap(x, y, note_rows[index][0], color, 2);
+    if (NOTE_NAMES[index][1] == '#') draw_glyph_bitmap(x + 8, y, note_rows[index][1], color, 2);
+}
+
+static void present_bottom_full() {
+    dmaCopy(bottom_framebuffer, bottom_vram, 256 * 192 * sizeof(u16));
+}
+
+static void present_bottom_band(int index) {
+    if (index < 0 || index >= KEY_COUNT) return;
+    int left = (index * 256) / KEY_COUNT;
+    int right = ((index + 1) * 256) / KEY_COUNT;
+    for (int y = 36; y < 192; ++y)
+        dmaCopy(&bottom_framebuffer[y * 256 + left], &bottom_vram[y * 256 + left], (right - left) * sizeof(u16));
 }
 
 static void fill_rect(int x0, int y0, int x1, int y1, u16 color) {
@@ -353,6 +386,7 @@ static void draw_bottom_full(int key) {
     const u16 background = opaque | RGB15(1, 1, 2);
     const u16 separator = opaque | RGB15(14, 18, 24);
     const u16 label = opaque | RGB15(31, 31, 31);
+    const u16 label_panel = opaque | RGB15(11, 16, 23);
     for (int y = 0; y < 192; ++y)
         for (int x = 0; x < 256; ++x)
             bottom_bitmap[y * 256 + x] = background;
@@ -366,18 +400,20 @@ static void draw_bottom_full(int key) {
     for (int x = 56; x <= 133; ++x) { bottom_bitmap[2 * 256 + x] = line; bottom_bitmap[19 * 256 + x] = line; }
     for (int x = 137; x <= 252; ++x) { bottom_bitmap[2 * 256 + x] = line; bottom_bitmap[19 * 256 + x] = line; }
     draw_text_bitmap(6, 5, "OCT", label);
-    draw_text_bitmap(34, 5, octave == 4 ? "4" : (octave == 5 ? "5" : (octave == 6 ? "6" : "2")), label);
+    const char* octave_label = octave == 2 ? "2" : (octave == 3 ? "3" : (octave == 4 ? "4" : (octave == 5 ? "5" : "6")));
+    draw_text_bitmap(34, 5, octave_label, label);
     draw_text_bitmap(58, 5, "TRACK", label);
     draw_text_bitmap(112, 5, selected_track == 0 ? "1" : (selected_track == 1 ? "2" : "3"), label);
     draw_text_bitmap(140, 5, TIMBRE_NAMES[timbre], label, 1);
 
+    for (int i = 0; i < KEY_COUNT; ++i) paint_bottom_band(i, i == key);
     for (int i = 0; i < KEY_COUNT; ++i) {
         int left = (i * 256) / KEY_COUNT;
         int right = ((i + 1) * 256) / KEY_COUNT;
         int label_width = (NOTE_NAMES[i][1] == '\0' ? 6 : 14);
         int label_x = left + ((right - left) - label_width) / 2;
-        paint_bottom_band(i, i == key);
-        draw_text_bitmap(label_x, 24, NOTE_NAMES[i], label, 2);
+        fill_rect(left + 2, 21, right - 3, 35, label_panel);
+        draw_note_label(i, label_x, 24, label);
         int marker_x = left + (right - left) / 2;
         for (int y = 20; y <= 22; ++y)
             for (int x = marker_x - 1; x <= marker_x + 1; ++x)
@@ -389,6 +425,7 @@ static void draw_bottom_full(int key) {
     rendered_track = selected_track;
     rendered_timbre = timbre;
     bottom_needs_redraw = false;
+    present_bottom_full();
 }
 
 static void draw_bottom(int key) {
@@ -397,9 +434,12 @@ static void draw_bottom(int key) {
         return;
     }
     if (key == rendered_bottom_key) return;
-    paint_bottom_band(rendered_bottom_key, false);
+    int previous_key = rendered_bottom_key;
+    paint_bottom_band(previous_key, false);
     paint_bottom_band(key, true);
     rendered_bottom_key = key;
+    present_bottom_band(previous_key);
+    present_bottom_band(key);
 }
 
 int main() {
@@ -411,7 +451,7 @@ int main() {
     bottom_bitmap_bg = bgInitSub(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
     bgSetPriority(bottom_bitmap_bg, 0);
     REG_DISPCNT_SUB |= DISPLAY_BG3_ACTIVE;
-    bottom_bitmap = bgGetGfxPtr(bottom_bitmap_bg);
+    bottom_vram = bgGetGfxPtr(bottom_bitmap_bg);
     soundEnable();
     touchPosition touch = {};
     previous_ms = now_ms();
