@@ -289,6 +289,10 @@ static void draw_top() {
         top_bitmap[25 * 256 + x] = line;
     }
     draw_text_bitmap(top_bitmap, 9, 9, "STYLOPHONE", text, 1);
+    char header_hz[12];
+    if (live_note >= 0) snprintf(header_hz, sizeof(header_hz), "HZ %d", note_frequency(live_note));
+    else snprintf(header_hz, sizeof(header_hz), "HZ --");
+    draw_text_bitmap(top_bitmap, 146, 9, header_hz, live_note >= 0 ? green : text, 1);
     draw_text_bitmap(top_bitmap, 178, 9, paused ? "PAUSED" : (recording ? "REC" : "RUN"), recording ? green : text, 1);
 
     if (recording && recording_target != nullptr) {
@@ -333,11 +337,11 @@ static void draw_top() {
     draw_text_bitmap(top_bitmap, 25, 180, octave_text, text, 1);
     draw_text_bitmap(top_bitmap, 39, 180, TIMBRE_NAMES[timbre], text, 1);
     draw_text_bitmap(top_bitmap, 82, 180, sustain_latched ? "SUSON" : "SUSOFF", sustain_latched ? green : text, 1);
-    char live_text[20];
+    char live_text[28];
     if (live_note >= 0) {
         int live_key = live_note % 12;
-        snprintf(live_text, sizeof(live_text), "%s%d %d%s", NOTE_NAMES[live_key], live_note / 12 - 1,
-                 note_frequency(live_note), vibrato_active ? " VIB" : "");
+        snprintf(live_text, sizeof(live_text), "%s%d M%d %dHZ%s", NOTE_NAMES[live_key], live_note / 12 - 1,
+                 live_note, note_frequency(live_note), vibrato_active ? " V" : "");
     } else {
         snprintf(live_text, sizeof(live_text), "LIVE --");
     }
@@ -356,8 +360,10 @@ static const uint8_t* glyph(char c) {
         {'R', 6, 5, 6, 5, 5}, {'S', 7, 4, 7, 1, 7}, {'T', 7, 2, 2, 2, 2},
         {'U', 5, 5, 5, 5, 7}, {'V', 5, 5, 5, 5, 2}, {'0', 7, 5, 5, 5, 7},
         {'1', 2, 6, 2, 2, 7}, {'2', 6, 1, 2, 4, 7}, {'3', 6, 1, 6, 1, 6},
-        {'4', 5, 5, 7, 1, 1},
-        {'5', 7, 4, 6, 1, 6}, {'6', 3, 4, 7, 5, 7}, {'Y', 5, 5, 2, 2, 2}, {'#', 5, 7, 5, 7, 5}
+        {'4', 5, 5, 7, 1, 1}, {'5', 7, 4, 6, 1, 6}, {'6', 3, 4, 7, 5, 7},
+        {'7', 7, 1, 2, 2, 2}, {'8', 7, 5, 7, 5, 7}, {'9', 7, 5, 7, 1, 6},
+        {'Y', 5, 5, 2, 2, 2},
+        {'Z', 7, 1, 2, 4, 7}, {'-', 0, 0, 7, 0, 0}, {'#', 5, 7, 5, 7, 5}
     };
     for (unsigned i = 0; i < sizeof(glyphs) / sizeof(glyphs[0]); ++i)
         if (glyphs[i][0] == (uint8_t)c) return &glyphs[i][1];

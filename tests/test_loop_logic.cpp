@@ -36,6 +36,19 @@ int main() {
     assert(midi_for_key(4, 5) == 65);
     assert(frequency_for_midi(64) == 329);
     assert(frequency_for_midi(65) == 349);
+    assert(frequency_for_midi(midi_for_key(2, 0)) == 65);
+    assert(frequency_for_midi(midi_for_key(3, 0)) == 130);
+    assert(frequency_for_midi(midi_for_key(4, 0)) == 261);
+    assert(frequency_for_midi(midi_for_key(5, 0)) == 522);
+    int previous_octave_frequency = frequency_for_midi(midi_for_key(2, 0));
+    for (int test_octave = 2; test_octave <= 6; ++test_octave) {
+        int first_key = test_octave == 2 ? 1 : 0;
+        for (int test_key = first_key; test_key < 12; ++test_key) {
+            int frequency = frequency_for_midi(midi_for_key(test_octave, test_key));
+            assert(frequency > previous_octave_frequency);
+            previous_octave_frequency = frequency;
+        }
+    }
     assert(sizeof(track.events) / sizeof(track.events[0]) == 96);
     return 0;
 }

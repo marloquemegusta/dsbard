@@ -33,6 +33,7 @@
 - La toma temporal vive en `recording_target` hasta terminar la grabaciÃ³n; durante `REC` el monitor debe dibujar ese destino y no solo `tracks[]`.
 - El overlay de melonDS Android puede interceptar los toques. Una captura con un icono del overlay activo no demuestra un fallo del cartucho.
 - ComprobaciÃ³n: tests host correctos, ROM recompilada, cargada en melonDS Android mediante ADB y captura visual verificada.
+- Los indicadores numÃ©ricos del framebuffer requieren glifos explÃ­citos para todos los dÃ­gitos usados. Si faltan `7`, `8` o `9`, una frecuencia puede parecer incorrecta aunque el cÃ¡lculo sea correcto.
 
 - Si algo se atasca y finalmente se resuelve, añadir en el siguiente trabajo una entrada breve en este `AGENTS.md` con: síntoma, causa real, solución y comprobación que lo confirmó.
 - Mantener estas reglas actualizadas en vez de repetir el mismo diagnóstico en chats posteriores.
