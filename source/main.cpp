@@ -112,8 +112,8 @@ static void begin_note(int key, uint32_t at, bool glide) {
             live_transition_started = at;
             live_glide = true;
         } else {
-            if (live_voice >= 0) soundSetFreq(live_voice, note_frequency(midi));
-            else live_voice = soundPlayPSG(TIMBRES[timbre], note_frequency(midi), 96, 64);
+            if (live_voice >= 0) soundKill(live_voice);
+            live_voice = soundPlayPSG(TIMBRES[timbre], note_frequency(midi), 96, 64);
             live_note = midi;
             live_target_note = midi;
             live_glide = false;
@@ -212,12 +212,11 @@ static void update_live_effects(uint32_t now, int held) {
             return;
         }
     }
-    int frequency = note_frequency(live_note);
     if (held & KEY_L) {
+        int frequency = note_frequency(live_note);
         int vibrato = ((now / 35) & 1) ? 3 : -3;
-        frequency += vibrato;
+        soundSetFreq(live_voice, (u16)(frequency + vibrato));
     }
-    soundSetFreq(live_voice, (u16)frequency);
 }
 
 static int active_track_event(const Track& track, uint32_t phase) {
@@ -284,6 +283,13 @@ static void draw_top() {
     iprintf("]");
     iprintf("\x1b[12;0HA REC  B UNDO/CLEAR  START PAUSE  SELECT MUTE");
     iprintf("\x1b[13;0HXY TIMBRE/SUSTAIN  L VIB  R GLIDE");
+    iprintf("\x1b[15;0HLIVE ");
+    if (live_note >= 0) {
+        int live_key = live_note % 12;
+        iprintf("%s%d MIDI%d %dHz       ", NOTE_NAMES[live_key], live_note / 12 - 1, live_note, note_frequency(live_note));
+    } else {
+        iprintf("--                 ");
+    }
 }
 
 static const uint8_t* glyph(char c) {

@@ -32,6 +32,10 @@ int main() {
         previous_frequency = frequency;
     }
     assert(frequency_for_midi(midi_for_key(5, 0)) > frequency_for_midi(midi_for_key(4, 11)));
+    assert(midi_for_key(4, 4) == 64);
+    assert(midi_for_key(4, 5) == 65);
+    assert(frequency_for_midi(64) == 329);
+    assert(frequency_for_midi(65) == 349);
     assert(sizeof(track.events) / sizeof(track.events[0]) == 96);
     return 0;
 }
