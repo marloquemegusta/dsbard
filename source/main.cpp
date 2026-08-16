@@ -143,6 +143,7 @@ static void start_recording(uint32_t now) {
         recording_track = {};
         recording_target = &recording_track;
     } else {
+        undo_available = false;
         tracks[selected_track].event_count = 0;
         tracks[selected_track].occupied = false;
         recording_target = &tracks[selected_track];
