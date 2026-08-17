@@ -125,7 +125,7 @@ static void begin_note(int key, uint32_t at, bool glide) {
         }
     }
     if (recording && open_note != key) {
-        close_open_note(at);
+        close_open_note(at - record_start);
         open_note = key;
         open_note_midi = midi;
         open_note_start = at - record_start;
