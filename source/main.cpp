@@ -575,6 +575,7 @@ static void update_loops() {
         }
         int note = event_index >= 0 ? tracks[i].events[event_index].midi_note : -1;
         int event_timbre = event_index >= 0 ? tracks[i].events[event_index].instrument_id : 0;
+        if (recording && recording_slot == i) note = -1;
         if (tracks[i].occupied && tracks[i].duration_ms > 0) {
             if (!paused && phase < last_phase[i]) flash_until = now_ms() + 80;
             last_phase[i] = phase;

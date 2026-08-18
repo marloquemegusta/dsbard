@@ -60,6 +60,8 @@ Una repeticion no crea un loop independiente: `x20` coloca veinte copias consecu
 
 Una captura sin notas se descarta directamente. No hay BPM, cuantizacion, sincronizacion automatica entre frases ni dependencia de una pista master.
 
+Mientras se captura una frase nueva, la pista seleccionada se silencia para no mezclar su frase anterior con la interpretacion. Las otras pistas siguen sonando sobre el timeline global, salvo las que esten silenciadas con `SELECT`.
+
 ## 6. Diario de franjas
 
 Cada franja pulsada anade su numero (`0`-`11`). `Y` anade un separador, `B` corto elimina el ultimo token y `B` mantenido vacia el diario. El diario es temporal.
