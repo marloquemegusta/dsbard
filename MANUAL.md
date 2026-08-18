@@ -6,7 +6,7 @@ DS Stylophone / Looper es un instrumento musical para Nintendo DS y DSi. La pant
 
 ## 2. Pantalla y conceptos principales
 
-- **Franjas tactiles `0`-`11`**: producen notas cromaticas y siempre muestran numeros.
+- **Franjas tactiles `0`-`11`**: producen notas cromaticas y siempre muestran numeros. La franja inferior queda reservada permanentemente para el timeline de frases.
 - **Octava**: determina la altura de las franjas; se puede seleccionar de la 2 a la 6.
 - **Pista**: hay tres pistas independientes. Cada pista contiene una secuencia de frases consecutivas.
 - **Frase**: captura una interpretacion con su timing relativo, duracion y timbre por evento. Puede contener silencios al principio y al final.
@@ -47,7 +47,7 @@ No existe una pista master. Cualquier pista puede ser la primera en grabarse.
 2. Pulsa `A`. La pista entra en `WAIT`, pero la captura ya esta abierta.
 3. Toca cuando quieras. Se conserva el timing real, incluido el silencio entre `A` y la primera nota.
 4. Pulsa `A` para cerrar la captura. Todavia no se guarda.
-5. Aparece la franja de recorte en la parte inferior de la pantalla tactil. El piano sigue visible arriba.
+5. La franja inferior reservada de la pantalla tactil muestra el timeline de frases; cuando no se esta recortando permanece vacia y discreta.
 6. Arrastra `START` y `END` con el stylus. Por defecto abarcan desde el comienzo de la primera nota hasta el final de la ultima.
 7. Pulsa `START` para reproducir o detener en loop la preview del rango actual.
 8. Usa arriba/abajo para elegir el numero de repeticiones, mostrado como `xN`.

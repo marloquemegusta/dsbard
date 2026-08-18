@@ -50,6 +50,7 @@ static constexpr int INSTRUMENTS = 10;
 static constexpr int PCM_INSTRUMENTS = 6;
 static constexpr int ROOTS = 4;
 static constexpr int SAMPLE_RATE = 22050;
+static constexpr int TOUCH_TIMELINE_TOP = 160;
 static constexpr uint32_t MIN_LOOP_MS = 120;
 static constexpr uint16_t JOURNAL_CAPACITY = 256;
 static constexpr uint32_t HOLD_MS = 850;
@@ -429,6 +430,8 @@ static void cancel_trim() {
     trim_preview_playing = false;
     recording_track = {};
     record_count = 0;
+    bottom_needs_redraw = true;
+    rendered_bottom_key = -2;
     stop_all_voices();
 }
 
@@ -469,6 +472,8 @@ static void accept_trim() {
     trim_preview_playing = false;
     recording_track = {};
     record_count = 0;
+    bottom_needs_redraw = true;
+    rendered_bottom_key = -2;
     DS_TRACE("DSDBG|PHRASE_ACCEPT|slot=%d|start=%lu|duration=%lu|repeat=%u|track_duration=%lu\n",
              recording_slot, (unsigned long)base, (unsigned long)phrase_duration,
              (unsigned)copies, (unsigned long)target.duration_ms);
@@ -776,7 +781,7 @@ static void present_bottom_band(int index) {
     if (index < 0 || index >= KEY_COUNT) return;
     int left = (index * 256) / KEY_COUNT;
     int right = ((index + 1) * 256) / KEY_COUNT;
-    for (int y = 36; y < 192; ++y)
+    for (int y = 36; y < TOUCH_TIMELINE_TOP; ++y)
         dmaCopy(&bottom_framebuffer[y * 256 + left], &bottom_vram[y * 256 + left], (right - left) * sizeof(u16));
 }
 
@@ -796,10 +801,10 @@ static void paint_bottom_band(int index, bool active) {
     int left = (index * 256) / KEY_COUNT;
     int right = ((index + 1) * 256) / KEY_COUNT;
     u16 fill = active ? active_color : ((index == 1 || index == 3 || index == 6 || index == 8 || index == 10) ? sharp : natural);
-    for (int y = 38; y < 192; ++y)
+    for (int y = 38; y < TOUCH_TIMELINE_TOP; ++y)
         for (int x = left + 1; x < right; ++x)
             bottom_bitmap[y * 256 + x] = fill;
-    for (int y = 36; y < 192; ++y) bottom_bitmap[y * 256 + left] = separator;
+    for (int y = 36; y < TOUCH_TIMELINE_TOP; ++y) bottom_bitmap[y * 256 + left] = separator;
     if (active) {
         for (int x = left + 1; x < right; ++x) {
             bottom_bitmap[36 * 256 + x] = separator;
@@ -847,7 +852,11 @@ static void draw_bottom_full(int key) {
             for (int x = marker_x - 1; x <= marker_x + 1; ++x)
                 bottom_bitmap[y * 256 + x] = separator;
     }
-    bottom_bitmap[191 * 256 + 255] = separator;
+    const u16 timeline_background = opaque | RGB15(2, 3, 6);
+    const u16 timeline_line = opaque | RGB15(9, 12, 18);
+    for (int y = TOUCH_TIMELINE_TOP; y < 192; ++y)
+        for (int x = 0; x < 256; ++x) bottom_bitmap[y * 256 + x] = timeline_background;
+    for (int x = 0; x < 256; ++x) bottom_bitmap[TOUCH_TIMELINE_TOP * 256 + x] = timeline_line;
     rendered_bottom_key = key;
     rendered_octave = octave;
     rendered_track = selected_track;
