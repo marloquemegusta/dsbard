@@ -11,6 +11,7 @@ DS Stylophone / Looper es un instrumento musical para Nintendo DS y DSi. La pant
 - **Pista**: hay tres pistas independientes. Cada pista contiene una secuencia de frases consecutivas.
 - **Frase**: captura una interpretacion con su timing relativo, duracion y timbre por evento. Puede contener silencios al principio y al final.
 - **Timeline global**: las tres pistas avanzan sobre el mismo reloj. La cancion completa vuelve a empezar al terminar la pista mas larga.
+- **Monitor superior**: cada caja representa una frase completa, incluidos sus silencios. Una frase repetida `xN` aparece como `N` cajas consecutivas.
 - **Diario**: registro temporal de las franjas tocadas; guarda valores `0`-`11`.
 
 ## 3. Tocar

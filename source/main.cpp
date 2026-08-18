@@ -519,18 +519,34 @@ static uint32_t song_duration_ms() {
     return duration;
 }
 
-static bool bucket_has_activity(const Track& track, int bucket) {
-    if (!track.occupied || track.duration_ms == 0) return false;
-    uint32_t begin = (track.duration_ms * (uint32_t)bucket) / 20u;
-    uint32_t end = (track.duration_ms * (uint32_t)(bucket + 1)) / 20u;
-    for (uint16_t i = 0; i < track.event_count; ++i) {
-        if (track.events[i].start_ms < end && track.events[i].end_ms > begin) return true;
-    }
-    return false;
-}
-
 static void draw_text_bitmap(u16* target, int x, int y, const char* text, u16 color, int scale = 2);
 static void fill_rect(u16* target, int x0, int y0, int x1, int y1, u16 color);
+
+static void draw_phrase_boxes(const Track& track, int y, uint32_t song_duration,
+                              u16 fill, u16 border) {
+    if (!track.occupied || track.phrase_count == 0 || song_duration == 0) return;
+    for (uint8_t phrase_index = 0; phrase_index < track.phrase_count; ++phrase_index) {
+        const loop_logic::Phrase& phrase = track.phrases[phrase_index];
+        for (uint16_t repetition = 0; repetition < phrase.repeat_count; ++repetition) {
+            uint32_t start = phrase.start_ms + phrase.duration_ms * (uint32_t)repetition;
+            uint32_t end = start + phrase.duration_ms;
+            int left = 91 + (int)(((uint64_t)start * 160u) / song_duration);
+            int right = 91 + (int)(((uint64_t)end * 160u) / song_duration);
+            if (left < 91) left = 91;
+            if (right > 251) right = 251;
+            if (right <= left) right = left + 1;
+            fill_rect(top_bitmap, left, y + 19, right, y + 27, fill);
+            for (int x = left; x <= right; ++x) {
+                top_bitmap[(y + 18) * 256 + x] = border;
+                top_bitmap[(y + 28) * 256 + x] = border;
+            }
+            top_bitmap[(y + 19) * 256 + left] = border;
+            top_bitmap[(y + 27) * 256 + left] = border;
+            top_bitmap[(y + 19) * 256 + right] = border;
+            top_bitmap[(y + 27) * 256 + right] = border;
+        }
+    }
+}
 
 static void update_loops() {
     if (trim_active) {
@@ -631,6 +647,7 @@ static void draw_top(bool show_help) {
         return;
     }
 
+    uint32_t total_duration = song_duration_ms();
     for (int i = 0; i < TRACKS; ++i) {
         int y = 30 + i * 37;
         bool selected = selected_track == i;
@@ -647,11 +664,17 @@ static void draw_top(bool show_help) {
         char track_number[2] = {(char)('1' + i), '\0'};
         draw_text_bitmap(top_bitmap, 38, y + 6, track_number, text, 1);
         draw_text_bitmap(top_bitmap, 52, y + 6, state, is_recording ? green : text, 1);
-        for (int bucket = 0; bucket < 20; ++bucket) {
-            int x = 91 + bucket * 8;
-            bool active = bucket_has_activity(visual_track, bucket);
-            u16 bar = active ? (is_recording || track.muted ? green : accent) : line;
-            fill_rect(top_bitmap, x, y + 19, x + 5, y + (active ? 26 : 23), bar);
+        draw_phrase_boxes(track, y, total_duration, track.muted ? green : accent, line);
+        if (is_recording && visual_track.duration_ms > 0) {
+            int right = 91 + (int)(((uint64_t)visual_track.duration_ms * 160u) /
+                                   (total_duration == 0 ? visual_track.duration_ms : total_duration));
+            if (right < 92) right = 92;
+            if (right > 251) right = 251;
+            fill_rect(top_bitmap, 91, y + 19, right, y + 27, green);
+            for (int x = 91; x <= right; ++x) {
+                top_bitmap[(y + 18) * 256 + x] = line;
+                top_bitmap[(y + 28) * 256 + x] = line;
+            }
         }
         if ((track.occupied || is_recording) && visual_track.duration_ms > 0) {
             uint32_t total_duration = song_duration_ms();
