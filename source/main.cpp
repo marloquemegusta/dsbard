@@ -411,8 +411,14 @@ static void stop_recording(uint32_t now) {
     recording_armed = false;
     recording_target = nullptr;
     if (record_count == 0) return;
-    trim_start_ms = recording_track.events[0].start_ms;
-    trim_end_ms = recording_track.events[record_count - 1].end_ms;
+    trim_start_ms = UINT32_MAX;
+    trim_end_ms = 0;
+    for (uint16_t i = 0; i < record_count; ++i) {
+        if (recording_track.events[i].start_ms < trim_start_ms)
+            trim_start_ms = recording_track.events[i].start_ms;
+        if (recording_track.events[i].end_ms > trim_end_ms)
+            trim_end_ms = recording_track.events[i].end_ms;
+    }
     trim_raw_duration_ms = recording_track.duration_ms;
     if (trim_end_ms <= trim_start_ms) trim_end_ms = trim_start_ms + MIN_LOOP_MS;
     trim_repeat_count = 1;
