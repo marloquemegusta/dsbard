@@ -51,6 +51,7 @@ static constexpr int PCM_INSTRUMENTS = 6;
 static constexpr int ROOTS = 4;
 static constexpr int SAMPLE_RATE = 22050;
 static constexpr int TOUCH_TIMELINE_TOP = 160;
+static constexpr uint32_t AUTO_TRIM_PREROLL_MS = 20;
 static constexpr uint32_t MIN_LOOP_MS = 120;
 static constexpr uint16_t JOURNAL_CAPACITY = 256;
 static constexpr uint32_t HOLD_MS = 850;
@@ -419,6 +420,10 @@ static void stop_recording(uint32_t now) {
         if (recording_track.events[i].end_ms > trim_end_ms)
             trim_end_ms = recording_track.events[i].end_ms;
     }
+    if (trim_start_ms > AUTO_TRIM_PREROLL_MS)
+        trim_start_ms -= AUTO_TRIM_PREROLL_MS;
+    else
+        trim_start_ms = 0;
     trim_raw_duration_ms = recording_track.duration_ms;
     if (trim_end_ms <= trim_start_ms) trim_end_ms = trim_start_ms + MIN_LOOP_MS;
     trim_repeat_count = 1;
