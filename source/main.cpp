@@ -1,19 +1,73 @@
 #include <nds.h>
+#ifndef __BLOCKSDS__
 #include <calico/system/tick.h>
+#endif
+#ifdef DS_DEBUG_TRACE
+#include <nds/debug.h>
+#endif
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "loop_logic.h"
+#include "rhodes_48_bin.h"
+#include "rhodes_60_bin.h"
+#include "rhodes_72_bin.h"
+#include "rhodes_84_bin.h"
+#include "kalimba_48_bin.h"
+#include "kalimba_60_bin.h"
+#include "kalimba_72_bin.h"
+#include "kalimba_84_bin.h"
+#include "bass_48_bin.h"
+#include "bass_60_bin.h"
+#include "bass_72_bin.h"
+#include "bass_84_bin.h"
+#include "pluck_48_bin.h"
+#include "pluck_60_bin.h"
+#include "pluck_72_bin.h"
+#include "pluck_84_bin.h"
+#include "glass_48_bin.h"
+#include "glass_60_bin.h"
+#include "glass_72_bin.h"
+#include "glass_84_bin.h"
+#include "pad_48_bin.h"
+#include "pad_60_bin.h"
+#include "pad_72_bin.h"
+#include "pad_84_bin.h"
 
 using loop_logic::NoteEvent;
 using loop_logic::Track;
 
+#ifdef DS_DEBUG_TRACE
+#define DS_TRACE(...) fprintf(stderr, __VA_ARGS__)
+#else
+#define DS_TRACE(...) ((void)0)
+#endif
+
 static constexpr int TRACKS = 3;
 static constexpr int KEY_COUNT = 12;
 static constexpr int MAX_VOICES = 4;
+static constexpr int INSTRUMENTS = 10;
+static constexpr int PCM_INSTRUMENTS = 6;
+static constexpr int ROOTS = 4;
+static constexpr int SAMPLE_RATE = 22050;
 static constexpr uint32_t MIN_LOOP_MS = 120;
-static const char* NOTE_NAMES[KEY_COUNT] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
-static const DutyCycle TIMBRES[4] = {DutyCycle_50, DutyCycle_25, DutyCycle_12, DutyCycle_75};
-static const char* TIMBRE_NAMES[4] = {"SQUARE", "PULSE", "THIN", "DARK"};
+static constexpr uint16_t JOURNAL_CAPACITY = 256;
+static constexpr uint32_t HOLD_MS = 850;
+static constexpr uint32_t LIVE_RELEASE_MS = 400;
+static constexpr int MAX_LIVE_TAILS = 4;
+static const int SAMPLE_ROOTS[ROOTS] = {48, 60, 72, 84};
+static const char* TIMBRE_NAMES[INSTRUMENTS] = {"RHODES", "KALIMBA", "BASS", "PLUCK", "GLASS", "PAD", "SQUARE", "PULSE", "THIN", "DARK"};
+static const DutyCycle PSG_DUTIES[4] = {DutyCycle_50, DutyCycle_25, DutyCycle_12, DutyCycle_75};
+struct SampleRef { const void* data; uint32_t size; };
+#define SAMPLE(kind, root) { kind##_##root##_bin, kind##_##root##_bin_size }
+static const SampleRef SAMPLES[PCM_INSTRUMENTS][ROOTS] = {
+    {SAMPLE(rhodes,48), SAMPLE(rhodes,60), SAMPLE(rhodes,72), SAMPLE(rhodes,84)},
+    {SAMPLE(kalimba,48), SAMPLE(kalimba,60), SAMPLE(kalimba,72), SAMPLE(kalimba,84)},
+    {SAMPLE(bass,48), SAMPLE(bass,60), SAMPLE(bass,72), SAMPLE(bass,84)},
+    {SAMPLE(pluck,48), SAMPLE(pluck,60), SAMPLE(pluck,72), SAMPLE(pluck,84)},
+    {SAMPLE(glass,48), SAMPLE(glass,60), SAMPLE(glass,72), SAMPLE(glass,84)},
+    {SAMPLE(pad,48), SAMPLE(pad,60), SAMPLE(pad,72), SAMPLE(pad,84)}
+};
 
 static Track tracks[TRACKS] = {};
 static Track recording_track = {};
@@ -25,28 +79,50 @@ static int octave = 4;
 static int timbre = 0;
 static int voice_ids[MAX_VOICES] = {-1, -1, -1, -1};
 static int voice_notes[MAX_VOICES] = {-1, -1, -1, -1};
-static int voice_timbres[MAX_VOICES] = {-1, -1, -1, -1};
+static int voice_instruments[MAX_VOICES] = {-1, -1, -1, -1};
 static uint32_t transport_ms = 0;
 static uint32_t previous_ms = 0;
+static uint32_t frame_count = 0;
+static int previous_buttons = 0;
 static bool paused = false;
 static bool recording = false;
+static bool recording_armed = false;
 static uint32_t record_start = 0;
+static uint32_t record_transport_start = 0;
 static uint16_t record_count = 0;
 static int recording_slot = 0;
 static Track* recording_target = nullptr;
+static uint32_t master_loop_ms = 0;
+static uint32_t master_origin_ms = 0;
 static int open_note = -1;
 static int open_note_midi = -1;
 static uint32_t open_note_start = 0;
-static uint8_t open_note_timbre = 0;
+static uint8_t open_note_instrument = 0;
 static uint32_t b_hold_started = 0;
 static bool b_hold_clear = false;
+static bool b_hold_cleared = false;
+static int b_action = 0;
+static int16_t journal_values[JOURNAL_CAPACITY] = {};
+static bool journal_separators[JOURNAL_CAPACITY] = {};
+static uint16_t journal_count = 0;
+static uint32_t journal_flash_until = 0;
+static uint32_t select_hold_started = 0;
+static bool select_pending = false;
+static bool select_help_active = false;
 static int live_voice = -1;
 static int live_note = -1;
+static int live_journal_key = -1;
 static int live_target_note = -1;
+static int live_root = -1;
 static uint32_t live_transition_started = 0;
 static bool live_glide = false;
-static bool sustain_latched = false;
 static bool vibrato_active = false;
+struct LiveTail {
+    int voice = -1;
+    uint32_t started = 0;
+};
+static LiveTail live_tails[MAX_LIVE_TAILS] = {};
+static bool sustain_active = false;
 static int bottom_bitmap_bg = -1;
 static u16* bottom_vram = nullptr;
 static u16 bottom_framebuffer[256 * 256] = {};
@@ -60,40 +136,90 @@ static int rendered_bottom_key = -2;
 static int rendered_octave = -1;
 static int rendered_track = -1;
 static int rendered_timbre = -1;
-static int touch_candidate_key = -1;
-static int touch_candidate_frames = 0;
 static int stable_touch_key = -1;
+static uint8_t top_render_divider = 0;
 static int last_loop_note[TRACKS] = {-1, -1, -1};
 static uint32_t last_phase[TRACKS] = {0, 0, 0};
 static uint32_t flash_until = 0;
 
 static uint32_t now_ms() {
+#ifdef __BLOCKSDS__
+    return (uint32_t)(((uint64_t)frame_count * 1000u) / 60u);
+#else
     return (uint32_t)(((uint64_t)tickGetCount() * 1000u) / TICK_FREQ);
+#endif
 }
 
 static uint16_t note_frequency(int midi) {
     return loop_logic::frequency_for_midi(midi);
 }
 
+static int root_index_for_note(int midi) {
+    int best = 0;
+    for (int i = 1; i < ROOTS; ++i)
+        if (abs(midi - SAMPLE_ROOTS[i]) < abs(midi - SAMPLE_ROOTS[best])) best = i;
+    return best;
+}
+
+static uint16_t sample_frequency(int midi, int root_midi) {
+    int delta = midi - root_midi;
+    double ratio = 1.0;
+    if (delta >= 0) for (int i = 0; i < delta; ++i) ratio *= 1.059463094;
+    else for (int i = 0; i > delta; --i) ratio /= 1.059463094;
+    uint32_t hz = (uint32_t)(SAMPLE_RATE * ratio + 0.5);
+    return (uint16_t)(hz > 65535u ? 65535u : hz);
+}
+
+static bool is_psg_instrument(int instrument) { return instrument >= PCM_INSTRUMENTS; }
+
+static uint16_t playback_frequency(int midi, int instrument, int root) {
+    return is_psg_instrument(instrument) ? loop_logic::psg_frequency_for_midi(midi)
+                                         : sample_frequency(midi, SAMPLE_ROOTS[root]);
+}
+
+// The DS speakers lose low fundamentals. Keep PCM audible across the keyboard
+// without making the high register disproportionately loud.
+static u8 pcm_volume_for_note(int midi, u8 base) {
+    int compensation = midi < 72 ? (72 - midi) : 0;
+    int volume = (int)base + compensation;
+    return (u8)(volume > 127 ? 127 : volume);
+}
+
+static int play_instrument(int instrument, int midi, u8 volume) {
+    if (is_psg_instrument(instrument))
+        return soundPlayPSG(PSG_DUTIES[instrument - PCM_INSTRUMENTS],
+                            loop_logic::psg_frequency_for_midi(midi), volume, 64);
+    int root = root_index_for_note(midi);
+    return soundPlaySample(SAMPLES[instrument][root].data, SoundFormat_8Bit,
+                           SAMPLES[instrument][root].size, sample_frequency(midi, SAMPLE_ROOTS[root]),
+                           pcm_volume_for_note(midi, volume), 64,
+                           instrument == 5, instrument == 5 ? 35280u : 0u);
+}
+
 static void kill_voice(int slot) {
     if (voice_ids[slot] >= 0) soundKill(voice_ids[slot]);
     voice_ids[slot] = -1;
     voice_notes[slot] = -1;
-    voice_timbres[slot] = -1;
+    voice_instruments[slot] = -1;
 }
 
-static void set_voice(int slot, int note, int voice_timbre) {
+static void set_voice(int slot, int note, int instrument) {
     if (note < 0) { kill_voice(slot); return; }
-    if (voice_notes[slot] == note && voice_timbres[slot] == (voice_timbre & 3) && voice_ids[slot] >= 0) return;
+    instrument %= INSTRUMENTS;
+    if (voice_notes[slot] == note && voice_instruments[slot] == instrument && voice_ids[slot] >= 0) return;
     kill_voice(slot);
-    voice_ids[slot] = soundPlayPSG(TIMBRES[voice_timbre & 3], note_frequency(note), 70, 64);
+    voice_ids[slot] = play_instrument(instrument, note, 82);
     voice_notes[slot] = note;
-    voice_timbres[slot] = voice_timbre & 3;
+    voice_instruments[slot] = instrument;
 }
 
 static void stop_all_voices() {
     for (int i = 0; i < MAX_VOICES; ++i) kill_voice(i);
-    kill_voice(3);
+    for (int i = 0; i < MAX_LIVE_TAILS; ++i) {
+        if (live_tails[i].voice >= 0) soundKill(live_tails[i].voice);
+        live_tails[i] = {};
+    }
+    if (live_voice >= 0) soundKill(live_voice);
     live_voice = -1;
     live_note = -1;
     live_target_note = -1;
@@ -105,57 +231,161 @@ static void close_open_note(uint32_t at) {
     event.start_ms = open_note_start;
     event.end_ms = at > open_note_start ? at : open_note_start + 1;
     event.midi_note = open_note_midi;
-    event.timbre = open_note_timbre;
+    event.instrument_id = open_note_instrument;
+    DS_TRACE("DSDBG|REC_EVENT|index=%u|start=%lu|end=%lu|midi=%d|timbre=%u\n",
+             (unsigned)(record_count - 1), (unsigned long)event.start_ms,
+             (unsigned long)event.end_ms, (int)event.midi_note, (unsigned)event.instrument_id);
     open_note = -1;
+}
+
+static void add_live_tail(int voice, uint32_t at) {
+    if (voice < 0) return;
+    int slot = -1;
+    for (int i = 0; i < MAX_LIVE_TAILS; ++i) {
+        if (live_tails[i].voice < 0) { slot = i; break; }
+    }
+    if (slot < 0) {
+        slot = 0;
+        for (int i = 1; i < MAX_LIVE_TAILS; ++i)
+            if (live_tails[i].started < live_tails[slot].started) slot = i;
+        soundKill(live_tails[slot].voice);
+    }
+    live_tails[slot].voice = voice;
+    live_tails[slot].started = at;
+    soundSetVolume(voice, 88);
+}
+
+static void update_live_tails(uint32_t now) {
+    for (int i = 0; i < MAX_LIVE_TAILS; ++i) {
+        if (live_tails[i].voice < 0) continue;
+        uint32_t elapsed = now - live_tails[i].started;
+        if (elapsed >= LIVE_RELEASE_MS) {
+            soundKill(live_tails[i].voice);
+            live_tails[i] = {};
+            continue;
+        }
+        int volume = (int)(88u * (LIVE_RELEASE_MS - elapsed) / LIVE_RELEASE_MS);
+        soundSetVolume(live_tails[i].voice, volume);
+    }
+}
+
+static void clear_journal() {
+    journal_count = 0;
+}
+
+static void append_journal_note(int key) {
+    if (journal_count >= JOURNAL_CAPACITY) return;
+    journal_values[journal_count] = (int16_t)loop_logic::journal_value_for_key(key);
+    journal_separators[journal_count] = false;
+    ++journal_count;
+    journal_flash_until = now_ms() + 120;
+}
+
+static void append_journal_separator() {
+    if (journal_count >= JOURNAL_CAPACITY) return;
+    journal_values[journal_count] = 0;
+    journal_separators[journal_count] = true;
+    ++journal_count;
+    journal_flash_until = now_ms() + 120;
+}
+
+static void pop_journal() {
+    if (journal_count == 0) return;
+    --journal_count;
+}
+
+static void begin_recording(uint32_t now);
+
+static void begin_recording_from_cycle(uint32_t now) {
+    uint32_t cycle_start = loop_logic::current_cycle_start(transport_ms, master_origin_ms, master_loop_ms);
+    record_transport_start = cycle_start;
+    record_start = now - (transport_ms - cycle_start);
+    recording = true;
+    recording_armed = false;
+    open_note = -1;
+    open_note_midi = -1;
+    DS_TRACE("DSDBG|REC_START|now=%lu|transport=%lu|cycle=%lu|slot=%d\n",
+             (unsigned long)now, (unsigned long)transport_ms,
+             (unsigned long)cycle_start, recording_slot);
 }
 
 static void begin_note(int key, uint32_t at, bool glide) {
     int midi = loop_logic::midi_for_key(octave, key);
+    if (recording_armed && recording_slot == 0 && master_loop_ms == 0)
+        begin_recording(at);
+    else if (recording_armed && recording_slot != 0 && master_loop_ms != 0)
+        begin_recording_from_cycle(at);
     if (live_note != midi) {
+        if (live_journal_key != key) {
+            append_journal_note(key);
+            live_journal_key = key;
+        }
         if (glide && live_voice >= 0 && live_note >= 0 && !(live_glide && live_target_note == midi)) {
             live_target_note = midi;
             live_transition_started = at;
             live_glide = true;
         } else {
-            if (live_voice >= 0) soundKill(live_voice);
-            live_voice = soundPlayPSG(TIMBRES[timbre], note_frequency(midi), 96, 64);
+            if (live_voice >= 0) {
+                if (sustain_active) add_live_tail(live_voice, at);
+                else soundKill(live_voice);
+            }
+            live_root = root_index_for_note(midi);
+            live_voice = play_instrument(timbre, midi, 100);
             live_note = midi;
             live_target_note = midi;
             live_glide = false;
         }
     }
     if (recording && open_note != key) {
+        // Event timestamps are relative to the start of the take.
         close_open_note(at - record_start);
         open_note = key;
         open_note_midi = midi;
         open_note_start = at - record_start;
-        open_note_timbre = (uint8_t)timbre;
+        open_note_instrument = (uint8_t)timbre;
     }
 }
 
 static void end_live_note(uint32_t at) {
-    if (live_voice >= 0) soundKill(live_voice);
+    if (live_voice >= 0) {
+        if (sustain_active) add_live_tail(live_voice, at);
+        else soundKill(live_voice);
+    }
     live_voice = -1;
     live_note = -1;
+    live_journal_key = -1;
     live_target_note = -1;
     live_glide = false;
     vibrato_active = false;
-    if (recording) close_open_note(at - record_start);
+    // Keep the recorded event open while L sustains a released touch. It is
+    // closed when sustain is released, when another note starts, or when the
+    // recording stops.
+    if (recording && !sustain_active) close_open_note(at - record_start);
 }
 
 static void refresh_live_timbre() {
     if (live_voice < 0 || live_note < 0) return;
     soundKill(live_voice);
-    live_voice = soundPlayPSG(TIMBRES[timbre], note_frequency(live_note), 96, 64);
+    live_root = root_index_for_note(live_note);
+    live_voice = play_instrument(timbre, live_note, 100);
 }
 
 static void clear_selected() {
     tracks[selected_track] = {};
-    if (recording && recording_slot == selected_track) { recording = false; open_note = -1; recording_target = nullptr; }
+    if ((recording || recording_armed) && recording_slot == selected_track) {
+        recording = false;
+        recording_armed = false;
+        open_note = -1;
+        recording_target = nullptr;
+    }
+    if (selected_track == 0) {
+        master_loop_ms = 0;
+        master_origin_ms = 0;
+    }
     for (int i = 0; i < TRACKS; ++i) last_loop_note[i] = -1;
 }
 
-static void start_recording(uint32_t now) {
+static void prepare_recording(uint32_t now) {
     recording_slot = selected_track;
     if (tracks[selected_track].occupied) {
         undo_track = tracks[selected_track];
@@ -170,26 +400,88 @@ static void start_recording(uint32_t now) {
         tracks[selected_track].occupied = false;
         recording_target = &tracks[selected_track];
     }
-    recording = true;
-    record_start = now;
+    recording = false;
+    recording_armed = true;
+    record_start = 0;
+    record_transport_start = 0;
     record_count = 0;
     open_note = -1;
     open_note_midi = -1;
+    uint32_t start = selected_track == 0 || master_loop_ms == 0
+        ? transport_ms
+        : loop_logic::next_cycle_start(transport_ms, master_origin_ms, master_loop_ms);
+    record_transport_start = start;
+    DS_TRACE("DSDBG|REC_ARM|now=%lu|transport=%lu|start=%lu|slot=%d\n",
+             (unsigned long)now, (unsigned long)transport_ms, (unsigned long)start, recording_slot);
+}
+
+static void begin_recording(uint32_t now) {
+    recording = true;
+    recording_armed = false;
+    record_start = now;
+    record_transport_start = transport_ms;
+    open_note = -1;
+    open_note_midi = -1;
+    if (live_note >= 0 && live_journal_key >= 0) {
+        open_note = live_journal_key;
+        open_note_midi = live_note;
+        open_note_start = 0;
+        open_note_instrument = (uint8_t)timbre;
+    }
+    DS_TRACE("DSDBG|REC_START|now=%lu|transport=%lu|slot=%d\n",
+             (unsigned long)now, (unsigned long)transport_ms, recording_slot);
+}
+
+static void cancel_armed_recording() {
+    if (!recording_armed) return;
+    recording_armed = false;
+    recording_target = nullptr;
+    if (tracks[recording_slot].occupied) tracks[recording_slot].muted = false;
+    else tracks[recording_slot] = {};
+}
+
+static void start_recording(uint32_t now) {
+    if (selected_track != 0 && !tracks[0].occupied) {
+        DS_TRACE("DSDBG|REC_BLOCKED|slot=%d|reason=master_track_empty\n", selected_track);
+        return;
+    }
+    prepare_recording(now);
+    if (recording_slot == 0 && master_loop_ms != 0) begin_recording(now);
 }
 
 static void stop_recording(uint32_t now) {
     close_open_note(now - record_start);
-    uint32_t duration = now - record_start;
+    uint32_t raw_duration = now - record_start;
+    uint32_t duration = recording_slot == 0 || master_loop_ms == 0
+        ? raw_duration
+        : loop_logic::snap_duration_to_master(raw_duration, master_loop_ms);
     recording = false;
+    recording_armed = false;
     Track* target = recording_target;
     recording_target = nullptr;
-    if (duration >= MIN_LOOP_MS && record_count > 0) {
+    if (target != nullptr && record_count > 0) {
+        if (duration < MIN_LOOP_MS) duration = MIN_LOOP_MS;
         target->duration_ms = duration;
-        target->origin_ms = transport_ms;
+        target->origin_ms = record_transport_start;
         target->event_count = record_count;
         target->occupied = true;
         target->muted = false;
         if (target == &recording_track) tracks[recording_slot] = recording_track;
+        DS_TRACE("DSDBG|REC_STOP|now=%lu|duration=%lu|count=%u|origin=%lu|slot=%d\n",
+                 (unsigned long)now, (unsigned long)duration, (unsigned)record_count,
+                 (unsigned long)target->origin_ms, recording_slot);
+        if (recording_slot == 0 && master_loop_ms == 0) {
+            master_loop_ms = duration;
+            master_origin_ms = target->origin_ms;
+            DS_TRACE("DSDBG|MASTER_SET|duration=%lu|origin=%lu\n",
+                     (unsigned long)master_loop_ms, (unsigned long)master_origin_ms);
+        }
+        for (uint16_t i = 0; i < record_count; ++i) {
+            const NoteEvent& event = target->events[i];
+            DS_TRACE("DSDBG|REC_FINAL|index=%u|start=%lu|end=%lu|midi=%d\n",
+                     (unsigned)i, (unsigned long)event.start_ms,
+                     (unsigned long)event.end_ms, (int)event.midi_note);
+        }
     } else {
         if (target == &tracks[recording_slot]) {
             tracks[recording_slot].event_count = 0;
@@ -214,20 +506,20 @@ static void update_live_effects(uint32_t now, int held) {
             live_note = live_target_note;
             live_glide = false;
         } else {
-            int from = note_frequency(live_note);
-            int to = note_frequency(live_target_note);
+            int from = playback_frequency(live_note, timbre, live_root);
+            int to = playback_frequency(live_target_note, timbre, live_root);
             int interpolated = from + ((to - from) * (int)elapsed) / 100;
             soundSetFreq(live_voice, (u16)interpolated);
             return;
         }
     }
-    if (held & KEY_L) {
-        int frequency = note_frequency(live_note);
+    if ((held & KEY_L) && (held & KEY_LEFT) && (held & KEY_TOUCH)) {
+        int frequency = playback_frequency(live_note, timbre, live_root);
         int vibrato = ((now / 30) & 1) ? 14 : -14;
         soundSetFreq(live_voice, (u16)(frequency + vibrato));
         vibrato_active = true;
     } else if (vibrato_active) {
-        soundSetFreq(live_voice, note_frequency(live_note));
+        soundSetFreq(live_voice, playback_frequency(live_note, timbre, live_root));
         vibrato_active = false;
     }
 }
@@ -259,18 +551,24 @@ static void update_loops() {
             event_index = active_track_event(tracks[i], phase);
         }
         int note = event_index >= 0 ? tracks[i].events[event_index].midi_note : -1;
-        int event_timbre = event_index >= 0 ? tracks[i].events[event_index].timbre : 0;
+        int event_timbre = event_index >= 0 ? tracks[i].events[event_index].instrument_id : 0;
         if (tracks[i].occupied && tracks[i].duration_ms > 0) {
             uint32_t phase = loop_logic::phase_ms(transport_ms - tracks[i].origin_ms, tracks[i].duration_ms);
             if (!paused && phase < last_phase[i]) flash_until = now_ms() + 80;
             last_phase[i] = phase;
         }
         set_voice(i, tracks[i].muted ? -1 : note, event_timbre);
+        if (note != last_loop_note[i]) {
+            uint32_t phase = tracks[i].occupied && tracks[i].duration_ms > 0
+                ? loop_logic::phase_ms(transport_ms - tracks[i].origin_ms, tracks[i].duration_ms) : 0;
+            DS_TRACE("DSDBG|LOOP_NOTE|slot=%d|phase=%lu|event=%d|midi=%d|count=%u\n",
+                     i, (unsigned long)phase, event_index, note, (unsigned)tracks[i].event_count);
+        }
         last_loop_note[i] = note;
     }
 }
 
-static void draw_top() {
+static void draw_top(bool show_help) {
     const u16 opaque = BIT(15);
     const u16 background = opaque | RGB15(1, 1, 2);
     const u16 panel = opaque | RGB15(8, 12, 18);
@@ -293,7 +591,9 @@ static void draw_top() {
     if (live_note >= 0) snprintf(header_hz, sizeof(header_hz), "HZ %d", note_frequency(live_note));
     else snprintf(header_hz, sizeof(header_hz), "HZ --");
     draw_text_bitmap(top_bitmap, 146, 9, header_hz, live_note >= 0 ? green : text, 1);
-    draw_text_bitmap(top_bitmap, 178, 9, paused ? "PAUSED" : (recording ? "REC" : "RUN"), recording ? green : text, 1);
+    bool waiting_for_note = recording_armed;
+    draw_text_bitmap(top_bitmap, 178, 9, paused ? "PAUSED" : (recording ? "REC" : (recording_armed ? (waiting_for_note ? "WAIT" : "ARM") : "RUN")),
+                     recording || recording_armed ? green : text, 1);
 
     if (recording && recording_target != nullptr) {
         recording_target->occupied = true;
@@ -302,15 +602,36 @@ static void draw_top() {
         recording_target->origin_ms = 0;
     }
 
+    if (show_help) {
+        fill_rect(top_bitmap, 4, 30, 251, 188, panel);
+        draw_text_bitmap(top_bitmap, 10, 35, "CONTROLS", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 44, "ARROWS OCT TRACK", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 53, "A REC", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 62, "B DELETE", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 71, "B HOLD CLEAR", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 80, "X TIMBRE", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 89, "Y SEP", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 98, "L SUS L+LEFT VIB", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 107, "L+RIGHT GLIDE", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 116, "START PAUSE", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 125, "SEL MUTE HOLD HELP", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 134, "L+B UNDO R+B CLEAR", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 145, "NUMBERS ONLY", green, 1);
+        dmaCopy(top_framebuffer, top_vram, 256 * 192 * sizeof(u16));
+        return;
+    }
+
     for (int i = 0; i < TRACKS; ++i) {
-        int y = 31 + i * 47;
+        int y = 30 + i * 37;
         bool selected = selected_track == i;
-        bool is_recording = recording && recording_slot == i;
+        bool is_recording = (recording || recording_armed) && recording_slot == i;
         const Track& track = tracks[i];
         const Track& visual_track = is_recording && recording_target != nullptr ? *recording_target : track;
-        const char* state = is_recording ? "REC" : (track.occupied ? (track.muted ? "MUTE" : "PLAY") : "EMPTY");
+        const char* state = recording_armed && recording_slot == i ? (waiting_for_note ? "WAIT" : "ARM")
+            : (recording && recording_slot == i ? "REC"
+            : (track.occupied ? (track.muted ? "MUTE" : "PLAY") : "EMPTY"));
         u16 card = selected ? panel_alt : panel;
-        fill_rect(top_bitmap, 4, y, 251, y + 39, card);
+        fill_rect(top_bitmap, 4, y, 251, y + 31, card);
         for (int x = 4; x <= 251; ++x) top_bitmap[y * 256 + x] = selected ? accent : line;
         draw_text_bitmap(top_bitmap, 9, y + 6, "TRACK", text, 1);
         char track_number[2] = {(char)('1' + i), '\0'};
@@ -320,15 +641,37 @@ static void draw_top() {
             int x = 91 + bucket * 8;
             bool active = bucket_has_activity(visual_track, bucket);
             u16 bar = active ? (is_recording || track.muted ? green : accent) : line;
-            fill_rect(top_bitmap, x, y + 24, x + 5, y + (active ? 31 : 27), bar);
+            fill_rect(top_bitmap, x, y + 19, x + 5, y + (active ? 26 : 23), bar);
         }
         if ((track.occupied || is_recording) && visual_track.duration_ms > 0) {
             uint32_t phase = is_recording
-                ? loop_logic::phase_ms(now_ms() - record_start, visual_track.duration_ms)
+                ? loop_logic::phase_ms(recording ? now_ms() - record_start : 0, visual_track.duration_ms)
                 : loop_logic::phase_ms(transport_ms - visual_track.origin_ms, visual_track.duration_ms);
             int playhead = 91 + (int)((phase * 160u) / visual_track.duration_ms);
-            fill_rect(top_bitmap, playhead, y + 21, playhead + 1, y + 34, green);
+            fill_rect(top_bitmap, playhead, y + 17, playhead + 1, y + 29, green);
         }
+    }
+
+    fill_rect(top_bitmap, 4, 142, 251, 172, panel);
+    draw_text_bitmap(top_bitmap, 9, 146, "DIARY", text, 1);
+    char diary_text[96] = {};
+    int start = journal_count > 10 ? journal_count - 10 : 0;
+    int cursor = 0;
+    if (start > 0) cursor += snprintf(diary_text + cursor, sizeof(diary_text) - cursor, "... ");
+    for (int i = start; i < journal_count && cursor < (int)sizeof(diary_text) - 8; ++i) {
+        if (i > start) cursor += snprintf(diary_text + cursor, sizeof(diary_text) - cursor, " ");
+        if (journal_separators[i]) cursor += snprintf(diary_text + cursor, sizeof(diary_text) - cursor, "|");
+        else cursor += snprintf(diary_text + cursor, sizeof(diary_text) - cursor, "%d", (int)journal_values[i]);
+    }
+    if (journal_count == 0) snprintf(diary_text, sizeof(diary_text), "--");
+    draw_text_bitmap(top_bitmap, 37, 146, diary_text,
+                     now_ms() < journal_flash_until ? green : text, 1);
+    if (b_hold_clear && b_action == 0) {
+        int progress = (int)(((now_ms() - b_hold_started) * 80u) / HOLD_MS);
+        if (progress > 80) progress = 80;
+        draw_text_bitmap(top_bitmap, 9, 162, "CLEAR", text, 1);
+        fill_rect(top_bitmap, 34, 163, 34 + progress, 167, green);
+        fill_rect(top_bitmap, 34 + progress, 163, 114, 167, line);
     }
 
     fill_rect(top_bitmap, 4, 177, 251, 188, panel);
@@ -336,12 +679,11 @@ static void draw_top() {
     char octave_text[2] = {(char)('0' + octave), '\0'};
     draw_text_bitmap(top_bitmap, 25, 180, octave_text, text, 1);
     draw_text_bitmap(top_bitmap, 39, 180, TIMBRE_NAMES[timbre], text, 1);
-    draw_text_bitmap(top_bitmap, 82, 180, sustain_latched ? "SUSON" : "SUSOFF", sustain_latched ? green : text, 1);
-    char live_text[28];
+    draw_text_bitmap(top_bitmap, 82, 180, "L SUS", text, 1);
+    char live_text[32];
     if (live_note >= 0) {
-        int live_key = live_note % 12;
-        snprintf(live_text, sizeof(live_text), "%s%d M%d %dHZ%s", NOTE_NAMES[live_key], live_note / 12 - 1,
-                 live_note, note_frequency(live_note), vibrato_active ? " V" : "");
+        snprintf(live_text, sizeof(live_text), "LIVE %d %dHZ%s", live_note,
+                 note_frequency(live_note), vibrato_active ? " V" : "");
     } else {
         snprintf(live_text, sizeof(live_text), "LIVE --");
     }
@@ -358,11 +700,11 @@ static const uint8_t* glyph(char c) {
         {'K', 5, 5, 6, 5, 5}, {'L', 4, 4, 4, 4, 7}, {'M', 5, 7, 7, 5, 5}, {'N', 5, 7, 7, 7, 5},
         {'O', 7, 5, 5, 5, 7}, {'P', 6, 5, 6, 4, 4}, {'Q', 7, 5, 7, 2, 1},
         {'R', 6, 5, 6, 5, 5}, {'S', 7, 4, 7, 1, 7}, {'T', 7, 2, 2, 2, 2},
-        {'U', 5, 5, 5, 5, 7}, {'V', 5, 5, 5, 5, 2}, {'0', 7, 5, 5, 5, 7},
+        {'U', 5, 5, 5, 5, 7}, {'V', 5, 5, 5, 5, 2}, {'W', 5, 7, 7, 7, 5}, {'0', 7, 5, 5, 5, 7},
         {'1', 2, 6, 2, 2, 7}, {'2', 6, 1, 2, 4, 7}, {'3', 6, 1, 6, 1, 6},
         {'4', 5, 5, 7, 1, 1}, {'5', 7, 4, 6, 1, 6}, {'6', 3, 4, 7, 5, 7},
         {'7', 7, 1, 2, 2, 2}, {'8', 7, 5, 7, 5, 7}, {'9', 7, 5, 7, 1, 6},
-        {'Y', 5, 5, 2, 2, 2},
+        {'Y', 5, 5, 2, 2, 2}, {'|', 2, 2, 2, 2, 2},
         {'Z', 7, 1, 2, 4, 7}, {'-', 0, 0, 7, 0, 0}, {'#', 5, 7, 5, 7, 5}
     };
     for (unsigned i = 0; i < sizeof(glyphs) / sizeof(glyphs[0]); ++i)
@@ -387,22 +729,9 @@ static void draw_text_bitmap(u16* target, int x, int y, const char* text, u16 co
 }
 
 static void draw_note_label(int index, int x, int y, u16 color) {
-    static const uint8_t note_rows[KEY_COUNT][2][5] = {
-        {{7, 4, 4, 4, 7}, {0, 0, 0, 0, 0}},
-        {{7, 4, 4, 4, 7}, {5, 7, 5, 7, 5}},
-        {{6, 5, 5, 5, 6}, {0, 0, 0, 0, 0}},
-        {{6, 5, 5, 5, 6}, {5, 7, 5, 7, 5}},
-        {{7, 4, 6, 4, 7}, {0, 0, 0, 0, 0}},
-        {{7, 4, 6, 4, 4}, {0, 0, 0, 0, 0}},
-        {{7, 4, 6, 4, 4}, {5, 7, 5, 7, 5}},
-        {{7, 4, 5, 5, 7}, {0, 0, 0, 0, 0}},
-        {{7, 4, 5, 5, 7}, {5, 7, 5, 7, 5}},
-        {{7, 5, 7, 5, 5}, {0, 0, 0, 0, 0}},
-        {{7, 5, 7, 5, 5}, {5, 7, 5, 7, 5}},
-        {{6, 5, 5, 5, 6}, {0, 0, 0, 0, 0}}
-    };
-    draw_glyph_bitmap(bottom_bitmap, x, y, note_rows[index][0], color, 2);
-    if (NOTE_NAMES[index][1] == '#') draw_glyph_bitmap(bottom_bitmap, x + 8, y, note_rows[index][1], color, 2);
+    char label[3];
+    snprintf(label, sizeof(label), "%d", index);
+    draw_text_bitmap(bottom_bitmap, x, y, label, color, 2);
 }
 
 static void present_bottom_full() {
@@ -475,7 +804,7 @@ static void draw_bottom_full(int key) {
     for (int i = 0; i < KEY_COUNT; ++i) {
         int left = (i * 256) / KEY_COUNT;
         int right = ((i + 1) * 256) / KEY_COUNT;
-        int label_width = (NOTE_NAMES[i][1] == '\0' ? 6 : 14);
+        int label_width = (i < 10 ? 6 : 14);
         int label_x = left + ((right - left) - label_width) / 2;
         fill_rect(bottom_bitmap, left + 2, 21, right - 3, 35, label_panel);
         draw_note_label(i, label_x, 24, label);
@@ -522,52 +851,90 @@ int main() {
     soundEnable();
     touchPosition touch = {};
     previous_ms = now_ms();
+#ifdef __BLOCKSDS__
+    while (1) {
+#else
     while (pmMainLoop()) {
+#endif
         swiWaitForVBlank();
+        ++frame_count;
         scanKeys();
         uint32_t now = now_ms();
         uint32_t delta = now - previous_ms;
         previous_ms = now;
         if (!paused) transport_ms += delta;
 
-        int down = keysDown();
         int held = keysHeld();
-        if (down & KEY_UP) if (octave < 6) ++octave;
-        if (down & KEY_DOWN) if (octave > 2) --octave;
-        if (down & KEY_LEFT) selected_track = loop_logic::wrap_track(selected_track, -1);
-        if (down & KEY_RIGHT) selected_track = loop_logic::wrap_track(selected_track, 1);
-        if (down & KEY_START) { paused = !paused; if (paused) update_loops(); }
-        if (down & KEY_SELECT) tracks[selected_track].muted = !tracks[selected_track].muted;
-        if (down & KEY_X) { timbre = (timbre + 1) & 3; refresh_live_timbre(); }
-        if (down & KEY_Y) sustain_latched = !sustain_latched;
-        if (down & KEY_A) { if (recording) stop_recording(now); else start_recording(now); }
-        if (down & KEY_B) { b_hold_started = now; b_hold_clear = true; }
-        if (!(held & KEY_B) && b_hold_clear) { if (now - b_hold_started < 850) undo_recording(); b_hold_clear = false; }
-        if ((held & KEY_B) && now - b_hold_started >= 850) { clear_selected(); b_hold_clear = false; }
+        int pressed = held & ~previous_buttons;
+        int released = previous_buttons & ~held;
+        if (pressed & KEY_UP) if (octave < 6) ++octave;
+        if (pressed & KEY_DOWN) if (octave > 2) --octave;
+        if (!(held & KEY_TOUCH)) {
+            if (pressed & KEY_LEFT) selected_track = loop_logic::wrap_track(selected_track, -1);
+            if (pressed & KEY_RIGHT) selected_track = loop_logic::wrap_track(selected_track, 1);
+        }
+        if (pressed & KEY_START) { paused = !paused; if (paused) update_loops(); }
+        if ((pressed & KEY_SELECT) && !select_pending) {
+            select_hold_started = now;
+            select_pending = true;
+            select_help_active = false;
+        }
+        if (select_pending && now - select_hold_started >= HOLD_MS) select_help_active = true;
+        if ((released & KEY_SELECT) && select_pending) {
+            if (!select_help_active) tracks[selected_track].muted = !tracks[selected_track].muted;
+            select_pending = false;
+            select_help_active = false;
+        }
+        if (pressed & KEY_X) { timbre = (timbre + 1) % INSTRUMENTS; refresh_live_timbre(); }
+        sustain_active = (held & KEY_L) != 0;
+        if ((pressed & KEY_Y) && !(held & KEY_TOUCH)) append_journal_separator();
+        if (pressed & KEY_A) {
+            if (recording) stop_recording(now);
+            else if (recording_armed) cancel_armed_recording();
+            else start_recording(now);
+        }
+        if ((pressed & KEY_B) && !b_hold_clear) {
+            b_hold_started = now;
+            b_hold_clear = true;
+            b_hold_cleared = false;
+            b_action = (held & KEY_L) ? 1 : ((held & KEY_R) ? 2 : 0);
+        }
+        if ((released & KEY_B) && b_hold_clear) {
+            if (b_action == 1) undo_recording();
+            else if (b_action == 2) clear_selected();
+            else if (!b_hold_cleared) pop_journal();
+            b_hold_clear = false;
+            b_hold_cleared = false;
+            b_action = 0;
+        }
+        if (b_hold_clear && b_action == 0 && !b_hold_cleared && now - b_hold_started >= HOLD_MS) {
+            clear_journal();
+            b_hold_cleared = true;
+        }
 
         int key = -1;
         touchRead(&touch);
         if ((held & KEY_TOUCH) && touch.py < 192) {
-            int sampled_key = loop_logic::key_for_x(touch.px);
-            if (sampled_key == touch_candidate_key) {
-                if (touch_candidate_frames < 2) ++touch_candidate_frames;
-            } else {
-                touch_candidate_key = sampled_key;
-                touch_candidate_frames = 1;
-            }
-            if (touch_candidate_frames >= 2) stable_touch_key = touch_candidate_key;
+            // Accept zone changes on the first hardware sample. Requiring two
+            // consecutive 60 Hz samples loses fast notes and glides on real DS.
+            stable_touch_key = loop_logic::key_for_x(touch.px);
             key = stable_touch_key;
         } else {
-            touch_candidate_key = -1;
-            touch_candidate_frames = 0;
             stable_touch_key = -1;
         }
-        if (key >= 0) begin_note(key, now, (held & KEY_R) != 0);
-        else if (!(held & KEY_TOUCH) && !sustain_latched && !(held & KEY_Y)) end_live_note(now);
+        if (key >= 0) begin_note(key, now, (held & KEY_L) && (held & KEY_RIGHT));
+        else if (!(held & KEY_TOUCH)) end_live_note(now);
         update_live_effects(now, held);
+        update_live_tails(now);
         update_loops();
-        draw_top();
+        // The top screen is expensive to rasterize and copy. Keep input/audio
+        // at 60 Hz while updating the visual dashboard at 30 Hz.
+        if (++top_render_divider >= 2) {
+            top_render_divider = 0;
+            draw_top(select_help_active);
+        }
         draw_bottom(key);
+        previous_buttons = held;
     }
     stop_all_voices();
     return 0;

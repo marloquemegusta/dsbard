@@ -6,6 +6,13 @@ int main() {
     assert(phase_ms(0, 1000) == 0);
     assert(phase_ms(1250, 1000) == 250);
     assert(phase_ms(50, 0) == 0);
+    assert(snap_duration_to_master(3790, 4000) == 4000);
+    assert(snap_duration_to_master(6100, 4000) == 8000);
+    assert(snap_duration_to_master(11400, 3800) == 11400);
+    assert(next_cycle_start(12500, 10000, 4000) == 14000);
+    assert(next_cycle_start(14000, 10000, 4000) == 14000);
+    assert(current_cycle_start(12500, 10000, 4000) == 10000);
+    assert(current_cycle_start(14000, 10000, 4000) == 14000);
     assert(wrap_track(0, -1) == 2);
     assert(wrap_track(2, 1) == 0);
     NoteEvent event{100, 200, 60, 0};
@@ -34,20 +41,30 @@ int main() {
     assert(frequency_for_midi(midi_for_key(5, 0)) > frequency_for_midi(midi_for_key(4, 11)));
     assert(midi_for_key(4, 4) == 64);
     assert(midi_for_key(4, 5) == 65);
+    assert(journal_value_for_key(0) == 0);
+    assert(journal_value_for_key(1) == 1);
+    assert(journal_value_for_key(11) == 11);
     assert(frequency_for_midi(64) == 329);
     assert(frequency_for_midi(65) == 349);
+    assert(psg_frequency_for_midi(64) == 329 * 8);
+    assert(psg_frequency_for_midi(65) == 349 * 8);
     assert(frequency_for_midi(midi_for_key(2, 0)) == 65);
     assert(frequency_for_midi(midi_for_key(3, 0)) == 130);
     assert(frequency_for_midi(midi_for_key(4, 0)) == 261);
     assert(frequency_for_midi(midi_for_key(5, 0)) == 522);
     int previous_octave_frequency = frequency_for_midi(midi_for_key(2, 0));
     for (int test_octave = 2; test_octave <= 6; ++test_octave) {
-        int first_key = test_octave == 2 ? 1 : 0;
-        for (int test_key = first_key; test_key < 12; ++test_key) {
+        for (int test_key = 0; test_key < 12; ++test_key) {
             int frequency = frequency_for_midi(midi_for_key(test_octave, test_key));
-            assert(frequency > previous_octave_frequency);
+            if (test_octave == 2 && test_key == 0) {
+                assert(frequency == previous_octave_frequency);
+            } else {
+                assert(frequency > previous_octave_frequency);
+            }
             previous_octave_frequency = frequency;
         }
+        assert(frequency_for_midi(midi_for_key(test_octave, 5)) >
+               frequency_for_midi(midi_for_key(test_octave, 4)));
     }
     assert(sizeof(track.events) / sizeof(track.events[0]) == 96);
     return 0;
