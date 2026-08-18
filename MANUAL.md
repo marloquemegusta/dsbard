@@ -60,7 +60,7 @@ Una repeticion no crea un loop independiente: `x20` coloca veinte copias consecu
 
 Una captura sin notas se descarta directamente. No hay BPM, cuantizacion, sincronizacion automatica entre frases ni dependencia de una pista master.
 
-Mientras se captura una frase nueva, la pista seleccionada se silencia para no mezclar su frase anterior con la interpretacion. Las otras pistas siguen sonando sobre el timeline global, salvo las que esten silenciadas con `SELECT`.
+Mientras se captura una frase nueva, la pista seleccionada se silencia para no mezclar su frase anterior con la interpretacion. Las otras pistas siguen sonando sobre el timeline global, salvo las que esten silenciadas con `SELECT`. Durante la reproduccion, la nota activa de la pista seleccionada se ilumina en verde en el teclado tactil cuando pertenece a la octava visible.
 
 El diario tambien queda congelado durante `WAIT` y `REC`, para poder leer la frase anterior mientras se repite o se transforma en una nueva captura.
 

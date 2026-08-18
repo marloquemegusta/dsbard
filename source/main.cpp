@@ -141,11 +141,13 @@ static u16 top_framebuffer[256 * 256] = {};
 static u16* top_bitmap = top_framebuffer;
 static bool bottom_needs_redraw = true;
 static int rendered_bottom_key = -2;
+static bool rendered_bottom_playback = false;
 static int rendered_octave = -1;
 static int rendered_track = -1;
 static int rendered_timbre = -1;
 static int stable_touch_key = -1;
 static uint8_t top_render_divider = 0;
+static int playback_key = -1;
 static int last_loop_note[TRACKS] = {-1, -1, -1};
 static uint32_t last_phase[TRACKS] = {0, 0, 0};
 static uint32_t flash_until = 0;
@@ -569,6 +571,7 @@ static void draw_phrase_boxes(const Track& track, int y, uint32_t song_duration,
 }
 
 static void update_loops() {
+    playback_key = -1;
     if (trim_active) {
         for (int i = 0; i < TRACKS; ++i) set_voice(i, -1, 0);
         int event_index = -1;
@@ -591,6 +594,11 @@ static void update_loops() {
         int note = event_index >= 0 ? tracks[i].events[event_index].midi_note : -1;
         int event_timbre = event_index >= 0 ? tracks[i].events[event_index].instrument_id : 0;
         if (recording && recording_slot == i) note = -1;
+        if (i == selected_track && note >= 0 && !tracks[i].muted) {
+            int first_midi = loop_logic::midi_for_key(octave, 0);
+            if (note >= first_midi && note < first_midi + KEY_COUNT)
+                playback_key = note - first_midi;
+        }
         if (tracks[i].occupied && tracks[i].duration_ms > 0) {
             if (!paused && phase < last_phase[i]) flash_until = now_ms() + 80;
             last_phase[i] = phase;
@@ -807,13 +815,13 @@ static void fill_rect(u16* target, int x0, int y0, int x1, int y1, u16 color) {
             target[y * 256 + x] = color;
 }
 
-static void paint_bottom_band(int index, bool active) {
+static void paint_bottom_band(int index, bool active, bool playback = false) {
     if (index < 0 || index >= KEY_COUNT) return;
     const u16 opaque = BIT(15);
     const u16 natural = opaque | RGB15(5, 8, 14);
     const u16 sharp = opaque | RGB15(3, 4, 8);
     const u16 separator = opaque | RGB15(14, 18, 24);
-    const u16 active_color = opaque | RGB15(20, 25, 31);
+    const u16 active_color = playback ? opaque | RGB15(20, 31, 22) : opaque | RGB15(20, 25, 31);
     int left = (index * 256) / KEY_COUNT;
     int right = ((index + 1) * 256) / KEY_COUNT;
     u16 fill = active ? active_color : ((index == 1 || index == 3 || index == 6 || index == 8 || index == 10) ? sharp : natural);
@@ -829,7 +837,7 @@ static void paint_bottom_band(int index, bool active) {
     }
 }
 
-static void draw_bottom_full(int key) {
+static void draw_bottom_full(int key, bool playback) {
     // 16-bit bitmap backgrounds use bit 15 as the opaque flag.
     const u16 opaque = BIT(15);
     const u16 background = opaque | RGB15(1, 1, 2);
@@ -855,7 +863,7 @@ static void draw_bottom_full(int key) {
     draw_text_bitmap(bottom_bitmap, 112, 5, selected_track == 0 ? "1" : (selected_track == 1 ? "2" : "3"), label);
     draw_text_bitmap(bottom_bitmap, 140, 5, TIMBRE_NAMES[timbre], label, 1);
 
-    for (int i = 0; i < KEY_COUNT; ++i) paint_bottom_band(i, i == key);
+    for (int i = 0; i < KEY_COUNT; ++i) paint_bottom_band(i, i == key, playback && i == key);
     for (int i = 0; i < KEY_COUNT; ++i) {
         int left = (i * 256) / KEY_COUNT;
         int right = ((i + 1) * 256) / KEY_COUNT;
@@ -874,6 +882,7 @@ static void draw_bottom_full(int key) {
         for (int x = 0; x < 256; ++x) bottom_bitmap[y * 256 + x] = timeline_background;
     for (int x = 0; x < 256; ++x) bottom_bitmap[TOUCH_TIMELINE_TOP * 256 + x] = timeline_line;
     rendered_bottom_key = key;
+    rendered_bottom_playback = playback;
     rendered_octave = octave;
     rendered_track = selected_track;
     rendered_timbre = timbre;
@@ -883,7 +892,7 @@ static void draw_bottom_full(int key) {
 
 static void draw_bottom(int key) {
     if (trim_active) {
-        draw_bottom_full(-1);
+        draw_bottom_full(-1, false);
         const u16 opaque = BIT(15);
         const u16 background = opaque | RGB15(2, 3, 6);
         const u16 line = opaque | RGB15(12, 16, 24);
@@ -907,17 +916,21 @@ static void draw_bottom(int key) {
         present_bottom_full();
         return;
     }
-    if (bottom_needs_redraw || rendered_octave != octave || rendered_track != selected_track || rendered_timbre != timbre) {
-        draw_bottom_full(key);
+    int desired_key = key >= 0 ? key : playback_key;
+    bool desired_playback = key < 0 && playback_key >= 0;
+    if (bottom_needs_redraw || rendered_octave != octave || rendered_track != selected_track ||
+        rendered_timbre != timbre || rendered_bottom_playback != desired_playback) {
+        draw_bottom_full(desired_key, desired_playback);
         return;
     }
-    if (key == rendered_bottom_key) return;
+    if (desired_key == rendered_bottom_key) return;
     int previous_key = rendered_bottom_key;
-    paint_bottom_band(previous_key, false);
-    paint_bottom_band(key, true);
-    rendered_bottom_key = key;
+    paint_bottom_band(previous_key, false, rendered_bottom_playback);
+    paint_bottom_band(desired_key, true, desired_playback);
+    rendered_bottom_key = desired_key;
+    rendered_bottom_playback = desired_playback;
     present_bottom_band(previous_key);
-    present_bottom_band(key);
+    present_bottom_band(desired_key);
 }
 
 int main() {
