@@ -573,7 +573,9 @@ static void draw_phrase_boxes(const Track& track, int y, uint32_t song_duration,
 static void update_loops() {
     playback_key = -1;
     if (trim_active) {
-        for (int i = 0; i < TRACKS; ++i) set_voice(i, -1, 0);
+        // The preview owns voice 0. Do not kill it every frame: set_voice()
+        // must be able to keep the sample/PSG voice alive between events.
+        for (int i = 1; i < TRACKS; ++i) set_voice(i, -1, 0);
         int event_index = -1;
         if (trim_preview_playing && trim_preview_track.duration_ms > 0) {
             uint32_t phase = (now_ms() - trim_preview_started) % trim_preview_track.duration_ms;
