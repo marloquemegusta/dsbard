@@ -11,36 +11,28 @@ struct NoteEvent {
     uint8_t instrument_id;
 };
 
+struct Phrase {
+    uint32_t start_ms;
+    uint32_t duration_ms;
+    uint16_t event_count;
+    uint16_t repeat_count;
+};
+
+static constexpr uint16_t MAX_TRACK_EVENTS = 96;
+static constexpr uint8_t MAX_TRACK_PHRASES = 16;
+
 struct Track {
     bool occupied;
     bool muted;
     uint32_t duration_ms;
-    uint32_t origin_ms;
     uint16_t event_count;
-    NoteEvent events[96];
+    uint8_t phrase_count;
+    NoteEvent events[MAX_TRACK_EVENTS];
+    Phrase phrases[MAX_TRACK_PHRASES];
 };
 
 inline uint32_t phase_ms(uint32_t elapsed_ms, uint32_t duration_ms) {
     return duration_ms == 0 ? 0 : elapsed_ms % duration_ms;
-}
-
-inline uint32_t snap_duration_to_master(uint32_t elapsed_ms, uint32_t master_ms) {
-    if (master_ms == 0) return elapsed_ms;
-    uint32_t multiples = (elapsed_ms + master_ms / 2u) / master_ms;
-    if (multiples == 0) multiples = 1;
-    return multiples * master_ms;
-}
-
-inline uint32_t next_cycle_start(uint32_t transport_ms, uint32_t origin_ms, uint32_t master_ms) {
-    if (master_ms == 0) return transport_ms;
-    uint32_t elapsed = transport_ms - origin_ms;
-    uint32_t remainder = elapsed % master_ms;
-    return transport_ms + (remainder == 0 ? 0 : master_ms - remainder);
-}
-
-inline uint32_t current_cycle_start(uint32_t transport_ms, uint32_t origin_ms, uint32_t master_ms) {
-    if (master_ms == 0) return transport_ms;
-    return transport_ms - ((transport_ms - origin_ms) % master_ms);
 }
 
 inline int key_for_x(uint16_t x) {

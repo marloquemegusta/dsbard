@@ -6,13 +6,6 @@ int main() {
     assert(phase_ms(0, 1000) == 0);
     assert(phase_ms(1250, 1000) == 250);
     assert(phase_ms(50, 0) == 0);
-    assert(snap_duration_to_master(3790, 4000) == 4000);
-    assert(snap_duration_to_master(6100, 4000) == 8000);
-    assert(snap_duration_to_master(11400, 3800) == 11400);
-    assert(next_cycle_start(12500, 10000, 4000) == 14000);
-    assert(next_cycle_start(14000, 10000, 4000) == 14000);
-    assert(current_cycle_start(12500, 10000, 4000) == 10000);
-    assert(current_cycle_start(14000, 10000, 4000) == 14000);
     assert(wrap_track(0, -1) == 2);
     assert(wrap_track(2, 1) == 0);
     NoteEvent event{100, 200, 60, 0};
@@ -20,8 +13,11 @@ int main() {
     assert(event_active(event, 100));
     assert(!event_active(event, 200));
     Track track{};
-    track.origin_ms = 5000;
-    assert(phase_ms(7250 - track.origin_ms, 1000) == 250);
+    track.duration_ms = 900;
+    track.phrase_count = 1;
+    track.phrases[0] = {0, 900, 1, 3};
+    assert(track.phrases[0].start_ms == 0);
+    assert(track.phrases[0].repeat_count == 3);
     int previous_midi = midi_for_key(4, key_for_x(0));
     for (int x = 1; x < 256; ++x) {
         int midi = midi_for_key(4, key_for_x((uint16_t)x));
@@ -66,6 +62,6 @@ int main() {
         assert(frequency_for_midi(midi_for_key(test_octave, 5)) >
                frequency_for_midi(midi_for_key(test_octave, 4)));
     }
-    assert(sizeof(track.events) / sizeof(track.events[0]) == 96);
+    assert(sizeof(track.events) / sizeof(track.events[0]) == MAX_TRACK_EVENTS);
     return 0;
 }

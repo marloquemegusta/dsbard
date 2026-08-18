@@ -88,12 +88,9 @@ static bool paused = false;
 static bool recording = false;
 static bool recording_armed = false;
 static uint32_t record_start = 0;
-static uint32_t record_transport_start = 0;
 static uint16_t record_count = 0;
 static int recording_slot = 0;
 static Track* recording_target = nullptr;
-static uint32_t master_loop_ms = 0;
-static uint32_t master_origin_ms = 0;
 static int open_note = -1;
 static int open_note_midi = -1;
 static uint32_t open_note_start = 0;
@@ -123,6 +120,15 @@ struct LiveTail {
 };
 static LiveTail live_tails[MAX_LIVE_TAILS] = {};
 static bool sustain_active = false;
+static bool trim_active = false;
+static uint32_t trim_start_ms = 0;
+static uint32_t trim_end_ms = 0;
+static uint32_t trim_raw_duration_ms = 0;
+static uint16_t trim_repeat_count = 1;
+static bool trim_preview_playing = false;
+static uint32_t trim_preview_started = 0;
+static int trim_drag_handle = 0;
+static Track trim_preview_track = {};
 static int bottom_bitmap_bg = -1;
 static u16* bottom_vram = nullptr;
 static u16 bottom_framebuffer[256 * 256] = {};
@@ -294,27 +300,9 @@ static void pop_journal() {
     --journal_count;
 }
 
-static void begin_recording(uint32_t now);
-
-static void begin_recording_from_cycle(uint32_t now) {
-    uint32_t cycle_start = loop_logic::current_cycle_start(transport_ms, master_origin_ms, master_loop_ms);
-    record_transport_start = cycle_start;
-    record_start = now - (transport_ms - cycle_start);
-    recording = true;
-    recording_armed = false;
-    open_note = -1;
-    open_note_midi = -1;
-    DS_TRACE("DSDBG|REC_START|now=%lu|transport=%lu|cycle=%lu|slot=%d\n",
-             (unsigned long)now, (unsigned long)transport_ms,
-             (unsigned long)cycle_start, recording_slot);
-}
-
 static void begin_note(int key, uint32_t at, bool glide) {
     int midi = loop_logic::midi_for_key(octave, key);
-    if (recording_armed && recording_slot == 0 && master_loop_ms == 0)
-        begin_recording(at);
-    else if (recording_armed && recording_slot != 0 && master_loop_ms != 0)
-        begin_recording_from_cycle(at);
+    if (recording_armed) recording_armed = false;
     if (live_note != midi) {
         if (live_journal_key != key) {
             append_journal_note(key);
@@ -378,118 +366,112 @@ static void clear_selected() {
         open_note = -1;
         recording_target = nullptr;
     }
-    if (selected_track == 0) {
-        master_loop_ms = 0;
-        master_origin_ms = 0;
-    }
     for (int i = 0; i < TRACKS; ++i) last_loop_note[i] = -1;
 }
 
 static void prepare_recording(uint32_t now) {
     recording_slot = selected_track;
-    if (tracks[selected_track].occupied) {
-        undo_track = tracks[selected_track];
-        undo_available = true;
-        undo_slot = selected_track;
-        recording_track = {};
-        recording_target = &recording_track;
-        tracks[selected_track].muted = true;
-    } else {
-        undo_available = false;
-        tracks[selected_track].event_count = 0;
-        tracks[selected_track].occupied = false;
-        recording_target = &tracks[selected_track];
-    }
-    recording = false;
+    recording_track = {};
+    recording_target = &recording_track;
+    recording = true;
     recording_armed = true;
-    record_start = 0;
-    record_transport_start = 0;
+    record_start = now;
     record_count = 0;
     open_note = -1;
     open_note_midi = -1;
-    uint32_t start = selected_track == 0 || master_loop_ms == 0
-        ? transport_ms
-        : loop_logic::next_cycle_start(transport_ms, master_origin_ms, master_loop_ms);
-    record_transport_start = start;
-    DS_TRACE("DSDBG|REC_ARM|now=%lu|transport=%lu|start=%lu|slot=%d\n",
-             (unsigned long)now, (unsigned long)transport_ms, (unsigned long)start, recording_slot);
-}
-
-static void begin_recording(uint32_t now) {
-    recording = true;
-    recording_armed = false;
-    record_start = now;
-    record_transport_start = transport_ms;
-    open_note = -1;
-    open_note_midi = -1;
-    if (live_note >= 0 && live_journal_key >= 0) {
-        open_note = live_journal_key;
-        open_note_midi = live_note;
-        open_note_start = 0;
-        open_note_instrument = (uint8_t)timbre;
-    }
-    DS_TRACE("DSDBG|REC_START|now=%lu|transport=%lu|slot=%d\n",
+    DS_TRACE("DSDBG|REC_ARM|now=%lu|transport=%lu|slot=%d\n",
              (unsigned long)now, (unsigned long)transport_ms, recording_slot);
 }
 
-static void cancel_armed_recording() {
-    if (!recording_armed) return;
-    recording_armed = false;
-    recording_target = nullptr;
-    if (tracks[recording_slot].occupied) tracks[recording_slot].muted = false;
-    else tracks[recording_slot] = {};
+static void start_recording(uint32_t now) {
+    prepare_recording(now);
 }
 
-static void start_recording(uint32_t now) {
-    if (selected_track != 0 && !tracks[0].occupied) {
-        DS_TRACE("DSDBG|REC_BLOCKED|slot=%d|reason=master_track_empty\n", selected_track);
-        return;
+static void build_trim_preview() {
+    trim_preview_track = {};
+    trim_preview_track.occupied = true;
+    trim_preview_track.duration_ms = trim_end_ms - trim_start_ms;
+    for (uint16_t i = 0; i < record_count && trim_preview_track.event_count < loop_logic::MAX_TRACK_EVENTS; ++i) {
+        const NoteEvent& source = recording_track.events[i];
+        if (source.end_ms <= trim_start_ms || source.start_ms >= trim_end_ms) continue;
+        NoteEvent& event = trim_preview_track.events[trim_preview_track.event_count++];
+        event.start_ms = source.start_ms < trim_start_ms ? 0 : source.start_ms - trim_start_ms;
+        event.end_ms = source.end_ms > trim_end_ms ? trim_preview_track.duration_ms : source.end_ms - trim_start_ms;
+        event.midi_note = source.midi_note;
+        event.instrument_id = source.instrument_id;
     }
-    prepare_recording(now);
-    if (recording_slot == 0 && master_loop_ms != 0) begin_recording(now);
 }
 
 static void stop_recording(uint32_t now) {
     close_open_note(now - record_start);
-    uint32_t raw_duration = now - record_start;
-    uint32_t duration = recording_slot == 0 || master_loop_ms == 0
-        ? raw_duration
-        : loop_logic::snap_duration_to_master(raw_duration, master_loop_ms);
+    recording_track.duration_ms = now - record_start;
+    if (recording_track.duration_ms == 0) recording_track.duration_ms = 1;
     recording = false;
     recording_armed = false;
-    Track* target = recording_target;
     recording_target = nullptr;
-    if (target != nullptr && record_count > 0) {
-        if (duration < MIN_LOOP_MS) duration = MIN_LOOP_MS;
-        target->duration_ms = duration;
-        target->origin_ms = record_transport_start;
-        target->event_count = record_count;
-        target->occupied = true;
-        target->muted = false;
-        if (target == &recording_track) tracks[recording_slot] = recording_track;
-        DS_TRACE("DSDBG|REC_STOP|now=%lu|duration=%lu|count=%u|origin=%lu|slot=%d\n",
-                 (unsigned long)now, (unsigned long)duration, (unsigned)record_count,
-                 (unsigned long)target->origin_ms, recording_slot);
-        if (recording_slot == 0 && master_loop_ms == 0) {
-            master_loop_ms = duration;
-            master_origin_ms = target->origin_ms;
-            DS_TRACE("DSDBG|MASTER_SET|duration=%lu|origin=%lu\n",
-                     (unsigned long)master_loop_ms, (unsigned long)master_origin_ms);
-        }
-        for (uint16_t i = 0; i < record_count; ++i) {
-            const NoteEvent& event = target->events[i];
-            DS_TRACE("DSDBG|REC_FINAL|index=%u|start=%lu|end=%lu|midi=%d\n",
-                     (unsigned)i, (unsigned long)event.start_ms,
-                     (unsigned long)event.end_ms, (int)event.midi_note);
-        }
-    } else {
-        if (target == &tracks[recording_slot]) {
-            tracks[recording_slot].event_count = 0;
-            tracks[recording_slot].occupied = false;
-        } else {
-            tracks[recording_slot].muted = false;
+    if (record_count == 0) return;
+    trim_start_ms = recording_track.events[0].start_ms;
+    trim_end_ms = recording_track.events[record_count - 1].end_ms;
+    trim_raw_duration_ms = recording_track.duration_ms;
+    if (trim_end_ms <= trim_start_ms) trim_end_ms = trim_start_ms + MIN_LOOP_MS;
+    trim_repeat_count = 1;
+    trim_active = true;
+    trim_preview_playing = false;
+    build_trim_preview();
+    stop_all_voices();
+    DS_TRACE("DSDBG|REC_STOP|now=%lu|start=%lu|end=%lu|count=%u|slot=%d\n",
+             (unsigned long)now, (unsigned long)trim_start_ms,
+             (unsigned long)trim_end_ms, (unsigned)record_count, recording_slot);
+}
+
+static void cancel_trim() {
+    trim_active = false;
+    trim_preview_playing = false;
+    recording_track = {};
+    record_count = 0;
+    stop_all_voices();
+}
+
+static void accept_trim() {
+    if (!trim_active || trim_preview_track.event_count == 0) { cancel_trim(); return; }
+    Track& target = tracks[recording_slot];
+    if (target.phrase_count >= loop_logic::MAX_TRACK_PHRASES) { cancel_trim(); return; }
+    uint32_t phrase_duration = trim_preview_track.duration_ms;
+    if (phrase_duration < MIN_LOOP_MS) phrase_duration = MIN_LOOP_MS;
+    uint32_t base = target.duration_ms;
+    uint16_t copies = trim_repeat_count;
+    uint32_t added_duration = phrase_duration * (uint32_t)copies;
+    if (target.event_count + (uint32_t)trim_preview_track.event_count * copies > loop_logic::MAX_TRACK_EVENTS) {
+        copies = (uint16_t)((loop_logic::MAX_TRACK_EVENTS - target.event_count) / trim_preview_track.event_count);
+        if (copies == 0) { cancel_trim(); return; }
+        added_duration = phrase_duration * (uint32_t)copies;
+    }
+    undo_track = target;
+    undo_slot = recording_slot;
+    undo_available = true;
+    loop_logic::Phrase& phrase = target.phrases[target.phrase_count++];
+    phrase.start_ms = base;
+    phrase.duration_ms = phrase_duration;
+    phrase.event_count = trim_preview_track.event_count;
+    phrase.repeat_count = copies;
+    for (uint16_t copy = 0; copy < copies; ++copy) {
+        uint32_t offset = base + phrase_duration * (uint32_t)copy;
+        for (uint16_t i = 0; i < trim_preview_track.event_count; ++i) {
+            NoteEvent& event = target.events[target.event_count++];
+            event = trim_preview_track.events[i];
+            event.start_ms += offset;
+            event.end_ms += offset;
         }
     }
+    target.duration_ms += added_duration;
+    target.occupied = true;
+    trim_active = false;
+    trim_preview_playing = false;
+    recording_track = {};
+    record_count = 0;
+    DS_TRACE("DSDBG|PHRASE_ACCEPT|slot=%d|start=%lu|duration=%lu|repeat=%u|track_duration=%lu\n",
+             recording_slot, (unsigned long)base, (unsigned long)phrase_duration,
+             (unsigned)copies, (unsigned long)target.duration_ms);
 }
 
 static void undo_recording() {
@@ -530,6 +512,13 @@ static int active_track_event(const Track& track, uint32_t phase) {
     return -1;
 }
 
+static uint32_t song_duration_ms() {
+    uint32_t duration = 0;
+    for (int i = 0; i < TRACKS; ++i)
+        if (tracks[i].duration_ms > duration) duration = tracks[i].duration_ms;
+    return duration;
+}
+
 static bool bucket_has_activity(const Track& track, int bucket) {
     if (!track.occupied || track.duration_ms == 0) return false;
     uint32_t begin = (track.duration_ms * (uint32_t)bucket) / 20u;
@@ -544,25 +533,36 @@ static void draw_text_bitmap(u16* target, int x, int y, const char* text, u16 co
 static void fill_rect(u16* target, int x0, int y0, int x1, int y1, u16 color);
 
 static void update_loops() {
+    if (trim_active) {
+        for (int i = 0; i < TRACKS; ++i) set_voice(i, -1, 0);
+        int event_index = -1;
+        if (trim_preview_playing && trim_preview_track.duration_ms > 0) {
+            uint32_t phase = (now_ms() - trim_preview_started) % trim_preview_track.duration_ms;
+            event_index = active_track_event(trim_preview_track, phase);
+        }
+        int note = event_index >= 0 ? trim_preview_track.events[event_index].midi_note : -1;
+        int instrument = event_index >= 0 ? trim_preview_track.events[event_index].instrument_id : 0;
+        set_voice(0, note, instrument);
+        return;
+    }
+    uint32_t song_duration = song_duration_ms();
+    uint32_t phase = song_duration == 0 ? 0 : transport_ms % song_duration;
     for (int i = 0; i < TRACKS; ++i) {
         int event_index = -1;
         if (tracks[i].occupied && !paused) {
-            uint32_t phase = loop_logic::phase_ms(transport_ms - tracks[i].origin_ms, tracks[i].duration_ms);
-            event_index = active_track_event(tracks[i], phase);
+            event_index = phase < tracks[i].duration_ms ? active_track_event(tracks[i], phase) : -1;
         }
         int note = event_index >= 0 ? tracks[i].events[event_index].midi_note : -1;
         int event_timbre = event_index >= 0 ? tracks[i].events[event_index].instrument_id : 0;
         if (tracks[i].occupied && tracks[i].duration_ms > 0) {
-            uint32_t phase = loop_logic::phase_ms(transport_ms - tracks[i].origin_ms, tracks[i].duration_ms);
             if (!paused && phase < last_phase[i]) flash_until = now_ms() + 80;
             last_phase[i] = phase;
         }
         set_voice(i, tracks[i].muted ? -1 : note, event_timbre);
         if (note != last_loop_note[i]) {
-            uint32_t phase = tracks[i].occupied && tracks[i].duration_ms > 0
-                ? loop_logic::phase_ms(transport_ms - tracks[i].origin_ms, tracks[i].duration_ms) : 0;
+            uint32_t current_phase = song_duration > 0 ? phase : 0;
             DS_TRACE("DSDBG|LOOP_NOTE|slot=%d|phase=%lu|event=%d|midi=%d|count=%u\n",
-                     i, (unsigned long)phase, event_index, note, (unsigned)tracks[i].event_count);
+                     i, (unsigned long)current_phase, event_index, note, (unsigned)tracks[i].event_count);
         }
         last_loop_note[i] = note;
     }
@@ -599,7 +599,17 @@ static void draw_top(bool show_help) {
         recording_target->occupied = true;
         recording_target->duration_ms = (uint32_t)(now_ms() - record_start);
         if (recording_target->duration_ms == 0) recording_target->duration_ms = 1;
-        recording_target->origin_ms = 0;
+    }
+
+    if (trim_active) {
+        char trim_text[32];
+        snprintf(trim_text, sizeof(trim_text), "TRIM %lu-%lu x%02u",
+                 (unsigned long)trim_start_ms, (unsigned long)trim_end_ms,
+                 (unsigned)trim_repeat_count);
+        draw_text_bitmap(top_bitmap, 9, 30, trim_text, green, 1);
+        draw_text_bitmap(top_bitmap, 9, 42, "START END  UP DOWN REPEAT", text, 1);
+        dmaCopy(top_framebuffer, top_vram, 256 * 192 * sizeof(u16));
+        return;
     }
 
     if (show_help) {
@@ -644,10 +654,11 @@ static void draw_top(bool show_help) {
             fill_rect(top_bitmap, x, y + 19, x + 5, y + (active ? 26 : 23), bar);
         }
         if ((track.occupied || is_recording) && visual_track.duration_ms > 0) {
-            uint32_t phase = is_recording
-                ? loop_logic::phase_ms(recording ? now_ms() - record_start : 0, visual_track.duration_ms)
-                : loop_logic::phase_ms(transport_ms - visual_track.origin_ms, visual_track.duration_ms);
+            uint32_t total_duration = song_duration_ms();
+            uint32_t phase = is_recording ? now_ms() - record_start
+                : (total_duration == 0 ? 0 : transport_ms % total_duration);
             int playhead = 91 + (int)((phase * 160u) / visual_track.duration_ms);
+            if (playhead > 251) playhead = 251;
             fill_rect(top_bitmap, playhead, y + 17, playhead + 1, y + 29, green);
         }
     }
@@ -823,6 +834,31 @@ static void draw_bottom_full(int key) {
 }
 
 static void draw_bottom(int key) {
+    if (trim_active) {
+        draw_bottom_full(-1);
+        const u16 opaque = BIT(15);
+        const u16 background = opaque | RGB15(2, 3, 6);
+        const u16 line = opaque | RGB15(12, 16, 24);
+        const u16 block = opaque | RGB15(20, 25, 31);
+        const u16 handle = opaque | RGB15(24, 31, 22);
+        for (int y = 160; y < 192; ++y)
+            for (int x = 0; x < 256; ++x) bottom_bitmap[y * 256 + x] = background;
+        for (int x = 7; x <= 248; ++x) bottom_bitmap[174 * 256 + x] = line;
+        int start_x = 8 + (int)(((uint64_t)trim_start_ms * 240u) / trim_raw_duration_ms);
+        int end_x = 8 + (int)(((uint64_t)trim_end_ms * 240u) / trim_raw_duration_ms);
+        for (uint16_t i = 0; i < record_count; ++i) {
+            const NoteEvent& event = recording_track.events[i];
+            int left = 8 + (int)(((uint64_t)event.start_ms * 240u) / trim_raw_duration_ms);
+            int right = 8 + (int)(((uint64_t)event.end_ms * 240u) / trim_raw_duration_ms);
+            fill_rect(bottom_bitmap, left, 168, right > left ? right : left + 1, 181, block);
+        }
+        fill_rect(bottom_bitmap, start_x - 2, 164, start_x + 2, 187, handle);
+        fill_rect(bottom_bitmap, end_x - 2, 164, end_x + 2, 187, handle);
+        draw_text_bitmap(bottom_bitmap, start_x - 3, 184, "S", handle, 1);
+        draw_text_bitmap(bottom_bitmap, end_x - 3, 184, "E", handle, 1);
+        present_bottom_full();
+        return;
+    }
     if (bottom_needs_redraw || rendered_octave != octave || rendered_track != selected_track || rendered_timbre != timbre) {
         draw_bottom_full(key);
         return;
@@ -867,14 +903,24 @@ int main() {
         int held = keysHeld();
         int pressed = held & ~previous_buttons;
         int released = previous_buttons & ~held;
-        if (pressed & KEY_UP) if (octave < 6) ++octave;
-        if (pressed & KEY_DOWN) if (octave > 2) --octave;
-        if (!(held & KEY_TOUCH)) {
+        if (!trim_active && (pressed & KEY_UP)) if (octave < 6) ++octave;
+        if (!trim_active && (pressed & KEY_DOWN)) if (octave > 2) --octave;
+        if (trim_active && (pressed & KEY_UP) && trim_repeat_count < 99) ++trim_repeat_count;
+        if (trim_active && (pressed & KEY_DOWN) && trim_repeat_count > 1) --trim_repeat_count;
+        if (!trim_active && !(held & KEY_TOUCH)) {
             if (pressed & KEY_LEFT) selected_track = loop_logic::wrap_track(selected_track, -1);
             if (pressed & KEY_RIGHT) selected_track = loop_logic::wrap_track(selected_track, 1);
         }
-        if (pressed & KEY_START) { paused = !paused; if (paused) update_loops(); }
-        if ((pressed & KEY_SELECT) && !select_pending) {
+        if (pressed & KEY_START) {
+            if (trim_active) {
+                trim_preview_playing = !trim_preview_playing;
+                trim_preview_started = now;
+            } else {
+                paused = !paused;
+                if (paused) update_loops();
+            }
+        }
+        if (!trim_active && (pressed & KEY_SELECT) && !select_pending) {
             select_hold_started = now;
             select_pending = true;
             select_help_active = false;
@@ -885,21 +931,22 @@ int main() {
             select_pending = false;
             select_help_active = false;
         }
-        if (pressed & KEY_X) { timbre = (timbre + 1) % INSTRUMENTS; refresh_live_timbre(); }
+        if (!trim_active && (pressed & KEY_X)) { timbre = (timbre + 1) % INSTRUMENTS; refresh_live_timbre(); }
         sustain_active = (held & KEY_L) != 0;
-        if ((pressed & KEY_Y) && !(held & KEY_TOUCH)) append_journal_separator();
+        if (!trim_active && (pressed & KEY_Y) && !(held & KEY_TOUCH)) append_journal_separator();
         if (pressed & KEY_A) {
-            if (recording) stop_recording(now);
-            else if (recording_armed) cancel_armed_recording();
+            if (trim_active) accept_trim();
+            else if (recording) stop_recording(now);
             else start_recording(now);
         }
-        if ((pressed & KEY_B) && !b_hold_clear) {
+        if (trim_active && (pressed & KEY_B)) cancel_trim();
+        if (!trim_active && (pressed & KEY_B) && !b_hold_clear) {
             b_hold_started = now;
             b_hold_clear = true;
             b_hold_cleared = false;
             b_action = (held & KEY_L) ? 1 : ((held & KEY_R) ? 2 : 0);
         }
-        if ((released & KEY_B) && b_hold_clear) {
+        if (!trim_active && (released & KEY_B) && b_hold_clear) {
             if (b_action == 1) undo_recording();
             else if (b_action == 2) clear_selected();
             else if (!b_hold_cleared) pop_journal();
@@ -907,14 +954,34 @@ int main() {
             b_hold_cleared = false;
             b_action = 0;
         }
-        if (b_hold_clear && b_action == 0 && !b_hold_cleared && now - b_hold_started >= HOLD_MS) {
+        if (!trim_active && b_hold_clear && b_action == 0 && !b_hold_cleared && now - b_hold_started >= HOLD_MS) {
             clear_journal();
             b_hold_cleared = true;
         }
 
         int key = -1;
         touchRead(&touch);
-        if ((held & KEY_TOUCH) && touch.py < 192) {
+        if (trim_active) {
+            if ((pressed & KEY_TOUCH) && touch.py >= 160) {
+                int start_x = 8 + (int)(((uint64_t)trim_start_ms * 240u) / trim_raw_duration_ms);
+                int end_x = 8 + (int)(((uint64_t)trim_end_ms * 240u) / trim_raw_duration_ms);
+                trim_drag_handle = abs((int)touch.px - start_x) <= abs((int)touch.px - end_x) ? 1 : 2;
+            }
+            if ((held & KEY_TOUCH) && trim_drag_handle != 0 && touch.py >= 160) {
+                int x = touch.px < 8 ? 8 : (touch.px > 248 ? 248 : touch.px);
+                uint32_t value = (uint32_t)(((uint64_t)(x - 8) * trim_raw_duration_ms) / 240u);
+                if (trim_drag_handle == 1) {
+                    if (value >= trim_end_ms) value = trim_end_ms - 1;
+                    trim_start_ms = value;
+                } else {
+                    if (value <= trim_start_ms) value = trim_start_ms + 1;
+                    trim_end_ms = value > trim_raw_duration_ms ? trim_raw_duration_ms : value;
+                }
+                build_trim_preview();
+                if (trim_preview_playing) trim_preview_started = now;
+            }
+            if (!(held & KEY_TOUCH)) trim_drag_handle = 0;
+        } else if ((held & KEY_TOUCH) && touch.py < 192) {
             // Accept zone changes on the first hardware sample. Requiring two
             // consecutive 60 Hz samples loses fast notes and glides on real DS.
             stable_touch_key = loop_logic::key_for_x(touch.px);
