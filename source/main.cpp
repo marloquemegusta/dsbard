@@ -479,6 +479,10 @@ static void accept_trim() {
     }
     target.duration_ms += added_duration;
     target.occupied = true;
+    // Start the newly accepted phrase at its own timeline origin instead of
+    // leaving the global transport halfway through the freshly appended range.
+    transport_ms = base;
+    for (int i = 0; i < TRACKS; ++i) last_phase[i] = base;
     trim_active = false;
     trim_preview_playing = false;
     recording_track = {};
