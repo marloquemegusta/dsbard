@@ -306,7 +306,7 @@ static void begin_note(int key, uint32_t at, bool glide) {
     if (recording_armed) recording_armed = false;
     if (live_note != midi) {
         if (live_journal_key != key) {
-            append_journal_note(key);
+            if (!recording) append_journal_note(key);
             live_journal_key = key;
         }
         if (glide && live_voice >= 0 && live_note >= 0 && !(live_glide && live_target_note == midi)) {

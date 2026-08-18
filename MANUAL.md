@@ -62,6 +62,8 @@ Una captura sin notas se descarta directamente. No hay BPM, cuantizacion, sincro
 
 Mientras se captura una frase nueva, la pista seleccionada se silencia para no mezclar su frase anterior con la interpretacion. Las otras pistas siguen sonando sobre el timeline global, salvo las que esten silenciadas con `SELECT`.
 
+El diario tambien queda congelado durante `WAIT` y `REC`, para poder leer la frase anterior mientras se repite o se transforma en una nueva captura.
+
 ## 6. Diario de franjas
 
 Cada franja pulsada anade su numero (`0`-`11`). `Y` anade un separador, `B` corto elimina el ultimo token y `B` mantenido vacia el diario. El diario es temporal.
