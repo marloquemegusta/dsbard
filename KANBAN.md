@@ -40,9 +40,9 @@ Este archivo es la copia versionada del tablero. La interfaz visual es [`KANBAN.
 
 ## En curso
 
-- **K-010 — Timeline táctil, pulso y corrección rítmica mínima** [feature, ux, looper, ritmo, grabación] — **En curso**
+- **K-010 — Timeline táctil, metrónomo y corrección rítmica mínima** [feature, ux, looper, ritmo, grabación] — **En curso**
   - **Fricción observada:** al repetir muchas veces una base no se puede volver inmediatamente al comienzo útil; `LOOP 1` repite las tres copias de una captura `x3` porque la UI muestra tres cajas pero el transporte cuenta una `Phrase` lógica; y el intérprete comete errores grandes de duración o posición que un autoajuste no puede interpretar.
-  - **Objetivo:** sustituir `LOOP N` por una selección temporal directa y reutilizar una sola rejilla de pulso para transporte, referencias visuales y corrección manual. `PULSE` es solo un reloj interno: el metrónomo audible queda desactivado. Tocar normalmente no debe exigir tempo, compás, proyecto ni editor.
+  - **Objetivo:** sustituir `LOOP N` por una selección temporal directa y reutilizar un reloj global de pulso para transporte, metrónomo audible, referencias visuales y corrección manual. `PULSE` es el periodo real en milisegundos; cada marca emite un pitido breve de 100 ms. `A` y `R` no reinician el reloj: `A` entra en la fase actual y `R` solo silencia/des-silencia. Tocar normalmente no debe exigir compás, proyecto ni editor.
   - **Conceptos públicos permitidos:**
     1. `SELECT` mantenido: muestra un selector táctil de frases de las tres pistas y permite abrir el editor común de aceptación para una frase concreta. Estado visible y reversible, no editor genérico.
     2. `PULSE GRID`: duración del pulso y subdivisión fija de cuatro pasos por pulso. No añadir todavía compás, acentos ternarios/cuaternarios, nombres de notas ni cuantización automática.
@@ -60,7 +60,7 @@ Este archivo es la copia versionada del tablero. La interfaz visual es [`KANBAN.
     - Extraer a `include/loop_logic.h` lógica host-testable para normalizar/clamp del rango, fin con/sin loop, bordes de repeticiones expandidas y snap.
   - **Pack B — pulso compartido:**
     - Añadir pulso configurable antes de grabar con una interacción pequeña y visible; mostrar primero el concepto cotidiano, por ejemplo `PULSO 1.00 s`. Mantener un valor por defecto y permitir tocar/grabar sin configurarlo.
-    - Durante grabación, `PULSE` solo mantiene la rejilla y el reloj interno; no emitir clic de metrónomo ni guardarlo como `NoteEvent`.
+    - Durante grabación y reproducción, `PULSE` mantiene la rejilla y emite un clic breve opcional; el clic nunca se guarda como `NoteEvent`.
     - Dibujar pulsos y cuartos de pulso en el timeline enfocado. Clic y marcas comparten `PulseGrid` y origen temporal.
     - No añadir compás: ternario/cuaternario solo será necesario para acentos o agrupaciones.
   - **Pack C — corrección automática y manual de la captura recién grabada:**

@@ -12,7 +12,7 @@ DS Stylophone / Looper es un instrumento musical para Nintendo DS y DSi. La pant
 - **Frase**: captura una interpretacion con su timing relativo, duracion y timbre por evento. Puede contener silencios al principio y al final.
 - **Timeline global**: las tres pistas avanzan sobre el mismo reloj. El transporte puede pausarse, detenerse al final o repetir una selección temporal común a las tres pistas.
 - **SELECT / selector de frases**: mantener `SELECT` intercambia la superficie de trabajo: el teclado queda visible arriba y abajo aparecen las tres pistas con la misma escala temporal y las mismas cajas de frase que el monitor superior. Cada repetición aparece como una caja consecutiva. Toca una caja para abrir el mismo editor de notas usado durante la aceptación; no hay playhead ni selección global.
-- **PULSE GRID**: el control `PULSE` define la duración del pulso en milisegundos. Cada pulso tiene cuatro pasos; las marcas y la corrección manual usan el mismo origen. El metrónomo audible está desactivado: `PULSE` solo sirve como reloj interno.
+- **PULSE GRID**: el control `PULSE` define el periodo real del reloj global en milisegundos (`250..2000`). Cada marca emite un pitido breve de 100 ms cuando `R` está activo. `A` no reinicia el reloj: grabar empieza dentro del pulso que esté sonando. Cada pulso tiene cuatro pasos; las marcas y la corrección manual usan el mismo origen. El clic no se guarda como nota.
 - **Monitor superior**: cada caja representa una frase completa, incluidos sus silencios. Una frase repetida `xN` aparece como `N` cajas consecutivas.
 - **Diario**: registro temporal de las franjas tocadas; guarda valores `0`-`11`.
 
@@ -33,7 +33,7 @@ Toca una franja para producir su nota. Tambien puedes tocar y arrastrar el stylu
 | `Y` | Activar/desactivar `LOOP ON/OFF` al soltarlo. El loop siempre respeta la selección temporal actual. |
 | `L` durante un toque | Mantener/sostener la cola de la nota; al grabar, el evento termina al soltar la franja y la cola usa `SUS 1..10`. |
 | `L` corto en aceptación | Activar o desactivar el sustain de la nota seleccionada; al activarlo usa el nivel actual de `SUS` y aparece la marca `S`. |
-| Panel FX, `PULSE` | Arrastrar el slider para elegir el pulso `250..2000 ms`; el valor por defecto es `1000 ms` y no hace falta configurarlo para tocar o grabar. No emite sonido. |
+| Panel FX, `PULSE` | Arrastrar el slider para elegir el periodo global `250..2000 ms`; el valor por defecto es `1000 ms`. No hace falta configurarlo para tocar o grabar. `R` silencia/des-silencia el click sin reiniciar el reloj. |
 | Panel FX, `VIB` | Arrastrar el slider para elegir profundidad `0..10`; `0` desactiva el vibrato. |
 | Panel FX, `SUS` | Arrastrar el slider para elegir la cola `1..10`; el sustain sigue activo solo mientras se mantiene `L`. |
 | `R` + `B` | Borrar todas las frases de la pista seleccionada. |
@@ -92,4 +92,4 @@ No se guardan datos entre sesiones.
 
 ## 9. Referencia rapida
 
-`Tactil`: tocar, sliders o selector/editor de frases · `↑/↓`: octava o repeticiones en aceptación · `←/→`: pista · `A`: captura/aceptar · `B`: diario, cancelar o cerrar selector · `Y`: loop ON/OFF · `START`: transporte/preview · `X`: timbre · `SELECT`: mute o selector de frases · `L+B`: deshacer frase · `R+B`: borrar pista.
+`Tactil`: tocar, sliders o selector/editor de frases · `↑/↓`: octava o repeticiones en aceptación · `←/→`: pista · `A`: captura/aceptar · `B`: diario, cancelar o cerrar selector · `Y`: loop ON/OFF · `START`: transporte/preview · `X`: timbre · `R`: click de pulso ON/OFF · `SELECT`: mute o selector de frases · `L+B`: deshacer frase · `R+B`: borrar pista.

@@ -1,5 +1,5 @@
 #include <nds.h>
-#include <sys/time.h>
+#include <nds/system_counter.h>
 #ifdef DS_DEBUG_TRACE
 #include <nds/debug.h>
 #endif
@@ -57,6 +57,7 @@ static constexpr uint32_t DEFAULT_PULSE_MS = 1000;
 static constexpr uint32_t MIN_PULSE_MS = 250;
 static constexpr uint32_t MAX_PULSE_MS = 2000;
 static constexpr uint32_t PULSE_STEP_MS = 125;
+static constexpr uint32_t METRONOME_CLICK_MS = 100;
 static const int SAMPLE_ROOTS[ROOTS] = {48, 60, 72, 84};
 static const char* TIMBRE_NAMES[INSTRUMENTS] = {"RHODES", "KALIMBA", "BASS", "PLUCK", "GLASS", "PAD", "SQUARE", "PULSE", "THIN", "DARK"};
 static const DutyCycle PSG_DUTIES[4] = {DutyCycle_50, DutyCycle_25, DutyCycle_12, DutyCycle_75};
@@ -84,7 +85,7 @@ static int voice_notes[MAX_VOICES] = {-1, -1, -1, -1};
 static int voice_instruments[MAX_VOICES] = {-1, -1, -1, -1};
 static uint32_t transport_ms = 0;
 static uint32_t previous_ms = 0;
-static uint32_t frame_count = 0;
+static uint32_t master_clock_ms = 0;
 static int previous_buttons = 0;
 static bool paused = false;
 static bool transport_finished = false;
@@ -141,7 +142,7 @@ static uint32_t trim_end_ms = 0;
 static uint32_t trim_raw_duration_ms = 0;
 static uint16_t trim_repeat_count = 1;
 static bool trim_preview_playing = false;
-static uint32_t trim_preview_frame_started = 0;
+static uint32_t trim_preview_started_ms = 0;
 static uint32_t trim_preview_last_phase = 0;
 static bool trim_preview_phase_valid = false;
 static int trim_drag_handle = 0;
@@ -178,12 +179,26 @@ static bool last_loop_sustain[TRACKS] = {};
 static uint8_t last_loop_sustain_level[TRACKS] = {};
 static uint32_t last_phase[TRACKS] = {0, 0, 0};
 static uint32_t flash_until = 0;
+static bool metronome_enabled = false;
+static int metronome_voice = -1;
+static uint32_t metronome_click_until = 0;
+static uint32_t metronome_last_pulse = 0;
+static uint32_t metronome_last_phase = 0;
+static bool metronome_phase_valid = false;
 
 static uint32_t now_ms() {
-    struct timeval tv = {};
-    gettimeofday(&tv, nullptr);
-    uint64_t milliseconds = (uint64_t)tv.tv_sec * 1000u + (uint64_t)tv.tv_usec / 1000u;
-    return (uint32_t)milliseconds;
+    // All temporal consumers read this same monotonic hardware clock. It is
+    // sampled once per main-loop iteration, but it advances independently of
+    // rendering and VBlank frequency.
+    return master_clock_ms;
+}
+
+static void advance_master_clock() {
+    // BlocksDS owns the timer used by this counter. Reading the monotonic
+    // system counter keeps recording and metronome time independent of FPS,
+    // and avoids interpreting timer 0 differently on emulator and DS.
+    master_clock_ms = systemCounterTicksToMsec(
+        (uint32_t)systemCounterGetTicks());
 }
 
 static uint16_t note_frequency(int midi) {
@@ -260,6 +275,20 @@ static void stop_all_voices() {
     live_note = -1;
 }
 
+static void reset_loop_playback() {
+    for (int i = 0; i < TRACKS; ++i) {
+        kill_voice(i);
+        last_loop_note[i] = -1;
+        last_loop_sustain[i] = false;
+        last_loop_sustain_level[i] = 0;
+        last_phase[i] = 0;
+    }
+    for (int i = 0; i < MAX_LIVE_TAILS; ++i) {
+        if (live_tails[i].voice >= 0) soundKill(live_tails[i].voice);
+        live_tails[i] = {};
+    }
+}
+
 static void reset_trim_preview_audio() {
     kill_voice(0);
     for (int i = 0; i < MAX_LIVE_TAILS; ++i) {
@@ -269,7 +298,7 @@ static void reset_trim_preview_audio() {
     last_loop_note[0] = -1;
     last_loop_sustain[0] = false;
     last_loop_sustain_level[0] = 0;
-    trim_preview_frame_started = frame_count;
+    trim_preview_started_ms = now_ms();
     trim_preview_last_phase = 0;
     trim_preview_phase_valid = false;
 }
@@ -795,9 +824,48 @@ static uint32_t dragged_note_free_request(uint32_t original_ms, uint32_t origin_
 
 static uint32_t trim_preview_phase_ms() {
     if (trim_preview_track.duration_ms == 0) return 0;
-    uint32_t elapsed_frames = frame_count - trim_preview_frame_started;
-    uint32_t elapsed_ms = (uint32_t)(((uint64_t)elapsed_frames * 1000u) / 60u);
+    uint32_t elapsed_ms = now_ms() - trim_preview_started_ms;
     return elapsed_ms % trim_preview_track.duration_ms;
+}
+
+static void stop_metronome_voice() {
+    if (metronome_voice >= 0) {
+        // PSG tones are continuous by nature. Kill the channel explicitly;
+        // volume zero alone is not enough on every DS audio implementation.
+        soundSetVolume(metronome_voice, 0);
+        soundKill(metronome_voice);
+        DS_TRACE("DSDBG|METRO_STOP|now=%lu\n", (unsigned long)now_ms());
+        metronome_voice = -1;
+    }
+}
+
+static void update_metronome(uint32_t now) {
+    if (metronome_voice >= 0 && (int32_t)(now - metronome_click_until) >= 0)
+        stop_metronome_voice();
+    // PULSE is a global musical clock. Recording, preview, transport and the
+    // R mute toggle must never reset its phase.
+    if (pulse_ms == 0) return;
+    uint32_t phase = now;
+    uint32_t pulse = phase / pulse_ms;
+    bool wrapped = metronome_phase_valid && phase < metronome_last_phase;
+    bool tick = !metronome_phase_valid || wrapped || pulse != metronome_last_pulse;
+    if (tick && metronome_enabled) {
+        if (metronome_voice < 0) {
+            metronome_voice = soundPlayPSG(DutyCycle_25,
+                                           loop_logic::psg_frequency_for_midi(48), 10, 64);
+        } else {
+            soundSetVolume(metronome_voice, 10);
+        }
+        metronome_click_until = now + METRONOME_CLICK_MS;
+        metronome_last_pulse = pulse;
+        metronome_phase_valid = true;
+        DS_TRACE("DSDBG|METRO_TICK|now=%lu|phase=%lu|pulse=%lu|period=%lu|wrapped=%d\n",
+                 (unsigned long)now, (unsigned long)phase, (unsigned long)pulse,
+                 (unsigned long)pulse_ms, wrapped ? 1 : 0);
+    }
+    if (tick) metronome_last_pulse = pulse;
+    metronome_phase_valid = true;
+    metronome_last_phase = phase;
 }
 
 static void update_loops() {
@@ -1051,11 +1119,12 @@ static void draw_top(bool show_help) {
         draw_text_bitmap(top_bitmap, 10, 89, "Y LOOP", text, 1);
         draw_text_bitmap(top_bitmap, 10, 98, "Y LOOP ON OFF", text, 1);
         draw_text_bitmap(top_bitmap, 10, 107, "FX PULSE VIB SUS", text, 1);
-        draw_text_bitmap(top_bitmap, 10, 116, "VIB 0 OFF L SUS", text, 1);
-        draw_text_bitmap(top_bitmap, 10, 125, "START PLAY/PAUSE", text, 1);
-        draw_text_bitmap(top_bitmap, 10, 134, "SEL MUTE HOLD PHRASE", text, 1);
-        draw_text_bitmap(top_bitmap, 10, 143, "L+B UNDO R+B CLEAR", text, 1);
-        draw_text_bitmap(top_bitmap, 10, 154, "NUMBERS ONLY", green, 1);
+        draw_text_bitmap(top_bitmap, 10, 116, "R CLICK ON OFF", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 125, "VIB 0 OFF L SUS", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 134, "START PLAY/PAUSE", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 143, "SEL MUTE HOLD PHRASE", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 152, "L+B UNDO R+B CLEAR", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 163, "NUMBERS ONLY", green, 1);
         dmaCopy(top_framebuffer, top_vram, 256 * 192 * sizeof(u16));
         return;
     }
@@ -1278,7 +1347,8 @@ static void draw_bottom_full(int key, bool playback) {
         bottom_bitmap[y * 256 + 167] = line;
     }
     char pulse_text[20];
-    snprintf(pulse_text, sizeof(pulse_text), "PULSE %lu", (unsigned long)pulse_ms);
+    snprintf(pulse_text, sizeof(pulse_text), "PULSE %lu %s", (unsigned long)pulse_ms,
+             metronome_enabled ? "CLK" : "--");
     draw_text_bitmap(bottom_bitmap, 5, 163, pulse_text, green, 1);
     char vibrato_text[20];
     snprintf(vibrato_text, sizeof(vibrato_text), "VIB %u", (unsigned)vibrato_depth_level);
@@ -1413,6 +1483,11 @@ static void draw_bottom(int key) {
 }
 
 int main() {
+#ifdef DS_DEBUG_TRACE
+    // Route stderr/DS_TRACE to NO$GBA's NOCASH/TTY debug window.
+    consoleDebugInit(DebugDevice_NOCASH);
+    DS_TRACE("DSDBG|BOOT|trace_ready\n");
+#endif
     videoSetMode(MODE_5_2D | DISPLAY_BG3_ACTIVE);
     videoSetModeSub(MODE_5_2D | DISPLAY_BG3_ACTIVE);
     vramSetBankA(VRAM_A_MAIN_BG);
@@ -1425,6 +1500,8 @@ int main() {
     top_vram = bgGetGfxPtr(top_bitmap_bg);
     bottom_vram = bgGetGfxPtr(bottom_bitmap_bg);
     soundEnable();
+    systemCounterSetup();
+    advance_master_clock();
     touchPosition touch = {};
     previous_ms = now_ms();
 #ifdef __BLOCKSDS__
@@ -1433,8 +1510,8 @@ int main() {
     while (pmMainLoop()) {
 #endif
         swiWaitForVBlank();
-        ++frame_count;
         scanKeys();
+        advance_master_clock();
         uint32_t now = now_ms();
         uint32_t delta = now - previous_ms;
         previous_ms = now;
@@ -1458,6 +1535,7 @@ int main() {
                              (unsigned long)transport_ms, (unsigned long)window_start,
                              (unsigned long)window_end);
                 } else {
+                    reset_loop_playback();
                     DS_TRACE("DSDBG|WRAP|transport=%lu|start=%lu|end=%lu\n",
                              (unsigned long)transport_ms, (unsigned long)window_start,
                              (unsigned long)window_end);
@@ -1494,7 +1572,7 @@ int main() {
             } else if (trim_active) {
                 reset_trim_preview_audio();
                 trim_preview_playing = !trim_preview_playing;
-                trim_preview_frame_started = frame_count;
+                trim_preview_started_ms = now_ms();
             } else {
                 if (paused && transport_finished) {
                     uint32_t window_start = 0;
@@ -1525,6 +1603,11 @@ int main() {
             select_help_active = false;
         }
         if (!trim_active && (pressed & KEY_X)) { timbre = (timbre + 1) % INSTRUMENTS; refresh_live_timbre(); }
+        if ((pressed & KEY_R) && !(held & KEY_B)) {
+            metronome_enabled = !metronome_enabled;
+            if (!metronome_enabled) stop_metronome_voice();
+            bottom_needs_redraw = true;
+        }
         sustain_active = (held & KEY_L) != 0;
         if (trim_active && (pressed & KEY_L) && trim_selected_event >= 0) {
             NoteEvent& event = recording_track.events[trim_selected_event];
@@ -1652,7 +1735,7 @@ int main() {
                 }
                 build_trim_preview();
                 if (trim_preview_playing) {
-                    trim_preview_frame_started = frame_count;
+                    trim_preview_started_ms = now_ms();
                     trim_preview_phase_valid = false;
                     reset_trim_preview_audio();
                 }
@@ -1708,6 +1791,7 @@ int main() {
         update_live_effects(now, held);
         update_live_tails(now);
         update_loops();
+        update_metronome(now);
         // The top screen is expensive to rasterize and copy. Keep input/audio
         // at 60 Hz while updating the visual dashboard at 30 Hz.
         if (++top_render_divider >= 2) {
