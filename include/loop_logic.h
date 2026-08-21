@@ -57,6 +57,19 @@ struct PulseGrid {
     }
 };
 
+static constexpr int TIMELINE_LEFT_X = 91;
+static constexpr int TIMELINE_RIGHT_X = 251;
+
+inline bool timeline_x_is_valid(int x) {
+    return x >= TIMELINE_LEFT_X && x <= TIMELINE_RIGHT_X;
+}
+
+inline uint32_t timeline_ms_for_x(int x, uint32_t duration_ms) {
+    if (!timeline_x_is_valid(x) || duration_ms == 0) return 0;
+    return (uint32_t)(((uint64_t)(x - TIMELINE_LEFT_X) * duration_ms) /
+                      (TIMELINE_RIGHT_X - TIMELINE_LEFT_X));
+}
+
 inline uint32_t snap_note_duration(uint32_t duration_ms, uint32_t pulse_ms) {
     if (pulse_ms == 0) return duration_ms;
     PulseGrid grid{pulse_ms};
@@ -107,6 +120,21 @@ inline bool commit_note_insertion(Track& track, PendingNoteInsertion& pending) {
     track.occupied = true;
     pending = {};
     return true;
+}
+
+inline bool replace_note_event(Track& track, uint16_t index, const NoteEvent& replacement) {
+    if (index >= track.event_count || replacement.end_ms <= replacement.start_ms) return false;
+    for (uint16_t i = 0; i < track.event_count; ++i) {
+        if (i == index) continue;
+        const NoteEvent& current = track.events[i];
+        if (replacement.start_ms < current.end_ms && current.start_ms < replacement.end_ms)
+            return false;
+    }
+    for (uint16_t i = index; i + 1 < track.event_count; ++i)
+        track.events[i] = track.events[i + 1];
+    --track.event_count;
+    PendingNoteInsertion pending{true, replacement};
+    return commit_note_insertion(track, pending);
 }
 
 // Loop boundaries use complete metronome pulses. Note events may still use
@@ -198,6 +226,122 @@ inline uint32_t expanded_phrase_start(const Phrase& phrase, uint16_t repetition)
 
 inline uint32_t expanded_phrase_end(const Phrase& phrase, uint16_t repetition) {
     return expanded_phrase_start(phrase, repetition) + phrase.duration_ms;
+}
+
+inline bool event_belongs_to_phrase(const NoteEvent& event, const Phrase& phrase,
+                                    uint16_t repetition) {
+    uint32_t start = expanded_phrase_start(phrase, repetition);
+    uint32_t end = expanded_phrase_end(phrase, repetition);
+    return event.start_ms >= start && event.end_ms <= end;
+}
+
+inline int find_direct_event_at(const Track& track, uint32_t time_ms) {
+    for (uint16_t i = 0; i < track.event_count; ++i) {
+        const NoteEvent& event = track.events[i];
+        if (!(event.start_ms <= time_ms && time_ms < event.end_ms)) continue;
+        bool in_phrase = false;
+        for (uint8_t p = 0; p < track.phrase_count && !in_phrase; ++p)
+            for (uint16_t repetition = 0; repetition < track.phrases[p].repeat_count; ++repetition)
+                if (event_belongs_to_phrase(event, track.phrases[p], repetition)) {
+                    in_phrase = true;
+                    break;
+                }
+        if (!in_phrase) return (int)i;
+    }
+    return -1;
+}
+
+inline bool rebuild_track_with_phrase_preserving_direct(const Track& original,
+                                                        int phrase_index,
+                                                        const Track& edited_phrase,
+                                                        uint16_t edited_repeat_count,
+                                                        Track& rebuilt) {
+    if (phrase_index < 0 || phrase_index >= original.phrase_count ||
+        edited_phrase.event_count == 0 || edited_repeat_count == 0) return false;
+    rebuilt = {};
+    rebuilt.occupied = original.occupied;
+    rebuilt.muted = original.muted;
+    rebuilt.phrase_count = original.phrase_count;
+    const Phrase& edited_old_phrase = original.phrases[phrase_index];
+    uint32_t old_edited_end = expanded_phrase_end(
+        edited_old_phrase, edited_old_phrase.repeat_count - 1);
+    int64_t edit_delta = (int64_t)edited_phrase.duration_ms * edited_repeat_count -
+        (int64_t)edited_old_phrase.duration_ms * edited_old_phrase.repeat_count;
+    uint32_t rebuilt_duration = 0;
+    for (uint8_t p = 0; p < original.phrase_count; ++p) {
+        const Phrase& old_phrase = original.phrases[p];
+        const Track& source = p == phrase_index ? edited_phrase : original;
+        uint16_t event_count = p == phrase_index ? edited_phrase.event_count : old_phrase.event_count;
+        uint16_t repeat_count = p == phrase_index ? edited_repeat_count : old_phrase.repeat_count;
+        uint32_t duration = p == phrase_index ? edited_phrase.duration_ms : old_phrase.duration_ms;
+        if (event_count == 0 || repeat_count == 0 || duration == 0 ||
+            rebuilt.event_count + (uint32_t)event_count * repeat_count > MAX_TRACK_EVENTS)
+            return false;
+        uint32_t phrase_start = old_phrase.start_ms;
+        if (p > phrase_index && old_phrase.start_ms >= old_edited_end)
+            phrase_start = (uint32_t)((int64_t)phrase_start + edit_delta);
+        Phrase& phrase = rebuilt.phrases[p];
+        phrase = {phrase_start, duration, event_count, repeat_count};
+        for (uint16_t repetition = 0; repetition < repeat_count; ++repetition) {
+            uint32_t offset = phrase_start + duration * (uint32_t)repetition;
+            uint16_t copied = 0;
+            for (uint16_t i = 0; i < source.event_count && copied < event_count; ++i) {
+                const NoteEvent& candidate = source.events[i];
+                bool belongs = p == phrase_index
+                    ? candidate.end_ms <= edited_phrase.duration_ms
+                    : event_belongs_to_phrase(candidate, old_phrase, repetition);
+                if (p == phrase_index && repetition > 0) {
+                    // Edited phrase events are stored relative to one phrase copy.
+                    belongs = candidate.end_ms <= edited_phrase.duration_ms;
+                }
+                if (!belongs) continue;
+                NoteEvent event = candidate;
+                if (p != phrase_index) {
+                    event.start_ms -= expanded_phrase_start(old_phrase, repetition);
+                    event.end_ms -= expanded_phrase_start(old_phrase, repetition);
+                }
+                event.start_ms += offset;
+                event.end_ms += offset;
+                rebuilt.events[rebuilt.event_count++] = event;
+                ++copied;
+            }
+            if (copied != event_count) return false;
+        }
+        uint32_t phrase_end = phrase_start + duration * (uint32_t)repeat_count;
+        if (phrase_end > rebuilt_duration) rebuilt_duration = phrase_end;
+    }
+    uint32_t new_edited_end = rebuilt.phrases[phrase_index].start_ms +
+        rebuilt.phrases[phrase_index].duration_ms * rebuilt.phrases[phrase_index].repeat_count;
+    int64_t shift = (int64_t)new_edited_end - (int64_t)old_edited_end;
+    for (uint16_t i = 0; i < original.event_count; ++i) {
+        const NoteEvent& candidate = original.events[i];
+        bool in_any_phrase = false;
+        for (uint8_t p = 0; p < original.phrase_count && !in_any_phrase; ++p)
+            for (uint16_t repetition = 0; repetition < original.phrases[p].repeat_count; ++repetition)
+                if (event_belongs_to_phrase(candidate, original.phrases[p], repetition)) {
+                    in_any_phrase = true;
+                    break;
+                }
+        if (in_any_phrase) continue;
+        NoteEvent direct = candidate;
+        if (candidate.start_ms >= old_edited_end) {
+            direct.start_ms = (uint32_t)((int64_t)direct.start_ms + shift);
+            direct.end_ms = (uint32_t)((int64_t)direct.end_ms + shift);
+        }
+        if (rebuilt.event_count >= MAX_TRACK_EVENTS) return false;
+        rebuilt.events[rebuilt.event_count++] = direct;
+    }
+    for (uint16_t i = 1; i < rebuilt.event_count; ++i) {
+        NoteEvent value = rebuilt.events[i];
+        uint16_t j = i;
+        while (j > 0 && rebuilt.events[j - 1].start_ms > value.start_ms) {
+            rebuilt.events[j] = rebuilt.events[j - 1];
+            --j;
+        }
+        rebuilt.events[j] = value;
+    }
+    rebuilt.duration_ms = rebuilt_duration > original.duration_ms ? rebuilt_duration : original.duration_ms;
+    return true;
 }
 
 inline uint32_t snap_timeline_time(uint32_t value_ms, uint32_t pulse_ms,

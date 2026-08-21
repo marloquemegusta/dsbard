@@ -143,5 +143,69 @@ int main() {
     cancel_note_insertion(cancelled);
     assert(!cancelled.active);
     assert(cancelled.event.start_ms == 0 && cancelled.event.end_ms == 0);
+
+    assert(!timeline_x_is_valid(90));
+    assert(timeline_x_is_valid(91));
+    assert(timeline_x_is_valid(251));
+    assert(!timeline_x_is_valid(252));
+    assert(timeline_ms_for_x(91, 2000) == 0);
+    assert(timeline_ms_for_x(251, 2000) == 2000);
+
+    Track mixed{};
+    mixed.occupied = true;
+    mixed.duration_ms = 3000;
+    mixed.phrase_count = 2;
+    mixed.phrases[0] = {0, 1000, 1, 1};
+    mixed.phrases[1] = {2000, 1000, 1, 1};
+    mixed.event_count = 3;
+    mixed.events[0] = {100, 300, 60, 1, 0, 0};
+    mixed.events[1] = {1250, 1500, 61, 2, 0, 0};
+    mixed.events[2] = {2100, 2300, 62, 3, 0, 0};
+    assert(find_direct_event_at(mixed, 1300) == 1);
+    assert(find_direct_event_at(mixed, 200) == -1);
+
+    Track rebuilt{};
+    Track edited_phrase{};
+    edited_phrase.occupied = true;
+    edited_phrase.duration_ms = 1000;
+    edited_phrase.event_count = 1;
+    edited_phrase.events[0] = {200, 450, 60, 9, 0, 0};
+    assert(rebuild_track_with_phrase_preserving_direct(mixed, 0, edited_phrase, 1, rebuilt));
+    assert(rebuilt.phrase_count == 2);
+    assert(rebuilt.event_count == 3);
+    assert(rebuilt.events[0].start_ms == 200 && rebuilt.events[0].end_ms == 450);
+    assert(find_direct_event_at(rebuilt, 1300) == 1);
+    assert(rebuilt.events[1].midi_note == 61);
+    assert(rebuilt.events[2].start_ms == 2100 && rebuilt.events[2].midi_note == 62);
+
+    Track phrase_only = mixed;
+    phrase_only.event_count = 2;
+    phrase_only.events[0] = mixed.events[0];
+    phrase_only.events[1] = mixed.events[2];
+    PendingNoteInsertion between{};
+    begin_note_insertion(between, 67, 5, 1300, 1000, 0);
+    assert(commit_note_insertion(phrase_only, between));
+    Track rebuilt_after_insert{};
+    assert(rebuild_track_with_phrase_preserving_direct(
+        phrase_only, 1, edited_phrase, 1, rebuilt_after_insert));
+    assert(find_direct_event_at(rebuilt_after_insert, 1300) >= 0);
+    assert(rebuilt_after_insert.phrase_count == 2);
+
+    Track replaced = mixed;
+    NoteEvent moved_direct{1600, 1800, 61, 2, 0, 0};
+    assert(replace_note_event(replaced, 1, moved_direct));
+    assert(find_direct_event_at(replaced, 1700) == 1);
+    assert(!replace_note_event(replaced, 1, NoteEvent{200, 400, 61, 2, 0, 0}));
+
+    PendingNoteInsertion overlapping{};
+    begin_note_insertion(overlapping, 64, 2, 1200, 1000, 0);
+    Track occupied{};
+    occupied.event_count = 1;
+    occupied.events[0] = {1000, 1500, 60, 1, 0, 0};
+    assert(!commit_note_insertion(occupied, overlapping));
+    assert(occupied.event_count == 1 && occupied.events[0].midi_note == 60);
+    Track full{};
+    full.event_count = MAX_TRACK_EVENTS;
+    assert(!commit_note_insertion(full, overlapping));
     return 0;
 }

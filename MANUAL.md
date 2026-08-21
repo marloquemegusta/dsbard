@@ -48,9 +48,11 @@ Toca una franja para producir su nota. Tambien puedes tocar y arrastrar el stylu
 ### Compositor experimental de notas individuales
 
 1. Toca una franja fuera del selector para preescucharla; esto no cambia ninguna pista.
-2. Mantén `SELECT` para mostrar el timeline y toca un hueco de la fila de la pista seleccionada. Se abre `INSERT NOTE` con una nota provisional usando la última franja preescuchada.
-3. Arrastra el centro de la nota para moverla y sus bordes para cambiar `START` o `END`. `START` reproduce la preview del ciclo global.
+2. Mantén `SELECT` para mostrar el timeline. Solo la región temporal `x=91..251` de la fila seleccionada acepta una inserción; las etiquetas y paneles quedan fuera. Toca un hueco para abrir `INSERT NOTE` con una nota provisional usando la última franja preescuchada.
+3. Arrastra el centro de la nota para moverla y su borde para cambiar `LENGTH`. En esta inserción los tiradores globales `START`/`END` están desactivados. `START` reproduce la preview sobre el ciclo global sin apagar las otras pistas.
 4. Pulsa `A` para colocar el `NoteEvent` en la pista o `B` para cancelarlo. Mientras aparece `INSERT NOTE`, la composición todavía no ha cambiado.
+
+Una nota individual ya aceptada se puede tocar de nuevo dentro de `x=91..251` para abrir el mismo editor y moverla o cambiar su duración. Si la posición es inválida, solapa otra nota o no queda capacidad, aparece `REJECT` y la composición permanece intacta.
 
 Esta confirmación `A/B` es deliberadamente experimental para esta ronda. El siguiente revisor debe intentar eliminarla y conservar el gesto directo si resulta suficientemente claro y cancelable.
 
