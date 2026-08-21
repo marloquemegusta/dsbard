@@ -33,6 +33,7 @@
 #include "pad_84_bin.h"
 
 using loop_logic::NoteEvent;
+using loop_logic::PendingNoteInsertion;
 using loop_logic::Track;
 
 #ifdef DS_DEBUG_TRACE
@@ -154,6 +155,10 @@ static uint32_t trim_edit_original_start_ms = 0;
 static uint32_t trim_edit_original_end_ms = 0;
 static bool trim_touch_free_changed = false;
 static Track trim_preview_track = {};
+static bool note_insert_active = false;
+static PendingNoteInsertion note_insert_pending = {};
+static int preview_note_midi = -1;
+static uint8_t preview_note_instrument = 0;
 static bool editing_existing_phrase = false;
 static int editing_phrase_index = -1;
 static int bottom_bitmap_bg = -1;
@@ -387,6 +392,8 @@ static void pop_journal() {
 
 static void begin_note(int key, uint32_t at) {
     int midi = loop_logic::midi_for_key(octave, key);
+    preview_note_midi = midi;
+    preview_note_instrument = (uint8_t)timbre;
     if (recording_armed) recording_armed = false;
     if (live_note != midi) {
         if (live_journal_key != key) {
@@ -602,6 +609,7 @@ static bool open_phrase_editor(int track_index, int phrase_index) {
 }
 
 static void cancel_trim() {
+    if (note_insert_active) loop_logic::cancel_note_insertion(note_insert_pending);
     trim_active = false;
     trim_preview_playing = false;
     recording_track = {};
@@ -610,6 +618,7 @@ static void cancel_trim() {
     trim_touch_editing = false;
     editing_existing_phrase = false;
     editing_phrase_index = -1;
+    note_insert_active = false;
     bottom_needs_redraw = true;
     rendered_bottom_key = -2;
     stop_all_voices();
@@ -618,6 +627,32 @@ static void cancel_trim() {
 static void accept_trim() {
     if (!trim_active || trim_preview_track.event_count == 0) { cancel_trim(); return; }
     Track& target = tracks[recording_slot];
+    if (note_insert_active) {
+        note_insert_pending.active = true;
+        note_insert_pending.event = trim_preview_track.events[0];
+        NoteEvent inserted_event = note_insert_pending.event;
+        undo_track = target;
+        undo_slot = recording_slot;
+        if (!loop_logic::commit_note_insertion(target, note_insert_pending)) {
+            cancel_trim();
+            return;
+        }
+        undo_available = true;
+        trim_active = false;
+        trim_preview_playing = false;
+        recording_track = {};
+        record_count = 0;
+        trim_selected_event = -1;
+        trim_touch_editing = false;
+        note_insert_active = false;
+        bottom_needs_redraw = true;
+        rendered_bottom_key = -2;
+        reset_trim_preview_audio();
+        DS_TRACE("DSDBG|NOTE_INSERT_ACCEPT|track=%d|start=%lu|end=%lu|count=%u\n",
+                 recording_slot, (unsigned long)inserted_event.start_ms,
+                 (unsigned long)inserted_event.end_ms, (unsigned)target.event_count);
+        return;
+    }
     if (editing_existing_phrase) {
         int edited_index = editing_phrase_index;
         Track rebuilt = {};
@@ -735,6 +770,40 @@ static uint32_t song_duration_ms() {
     return duration;
 }
 
+static void start_note_insertion(uint32_t requested_ms) {
+    if (preview_note_midi < 0) return;
+    uint32_t cycle_end = song_duration_ms();
+    if (cycle_end == 0) cycle_end = pulse_ms;
+    loop_logic::begin_note_insertion(note_insert_pending, (int16_t)preview_note_midi,
+                                      preview_note_instrument, requested_ms, pulse_ms);
+    if (note_insert_pending.event.end_ms > cycle_end) cycle_end = note_insert_pending.event.end_ms;
+    recording_slot = selected_track;
+    recording_track = {};
+    recording_track.occupied = true;
+    recording_track.duration_ms = cycle_end;
+    recording_track.event_count = 1;
+    recording_track.events[0] = note_insert_pending.event;
+    record_count = 1;
+    trim_start_ms = 0;
+    trim_end_ms = cycle_end;
+    trim_raw_duration_ms = cycle_end;
+    trim_repeat_count = 1;
+    trim_selected_event = 0;
+    trim_touch_editing = false;
+    editing_existing_phrase = false;
+    editing_phrase_index = -1;
+    note_insert_active = true;
+    trim_active = true;
+    trim_preview_playing = false;
+    build_trim_preview();
+    reset_trim_preview_audio();
+    bottom_needs_redraw = true;
+    DS_TRACE("DSDBG|NOTE_INSERT_OPEN|track=%d|midi=%d|start=%lu|end=%lu\n",
+             recording_slot, preview_note_midi,
+             (unsigned long)note_insert_pending.event.start_ms,
+             (unsigned long)note_insert_pending.event.end_ms);
+}
+
 static void playback_window(uint32_t& start, uint32_t& end) {
     uint32_t duration = song_duration_ms();
     if (!timeline_selection.explicit_range) {
@@ -776,6 +845,35 @@ static void draw_phrase_boxes(u16* target, const Track& track, int y, uint32_t s
             target[(y + box_top) * 256 + right] = border;
             target[(y + box_bottom) * 256 + right] = border;
         }
+    }
+}
+
+static void draw_direct_note_events(u16* target, const Track& track, int y,
+                                    uint32_t song_duration, u16 fill, u16 border) {
+    if (!track.occupied || track.event_count == 0 || song_duration == 0) return;
+    for (uint16_t i = 0; i < track.event_count; ++i) {
+        const NoteEvent& event = track.events[i];
+        bool belongs_to_phrase = false;
+        for (uint8_t p = 0; p < track.phrase_count && !belongs_to_phrase; ++p) {
+            const loop_logic::Phrase& phrase = track.phrases[p];
+            for (uint16_t repetition = 0; repetition < phrase.repeat_count; ++repetition) {
+                uint32_t start = loop_logic::expanded_phrase_start(phrase, repetition);
+                uint32_t end = loop_logic::expanded_phrase_end(phrase, repetition);
+                if (event.start_ms >= start && event.start_ms < end) {
+                    belongs_to_phrase = true;
+                    break;
+                }
+            }
+        }
+        if (belongs_to_phrase) continue;
+        int left = 91 + (int)(((uint64_t)event.start_ms * 160u) / song_duration);
+        int right = 91 + (int)(((uint64_t)event.end_ms * 160u) / song_duration);
+        if (left < 91) left = 91;
+        if (right > 251) right = 251;
+        if (right <= left) right = left + 1;
+        fill_rect(target, left, y + 19, right, y + 27, fill);
+        target[(y + 18) * 256 + left] = border;
+        target[(y + 28) * 256 + right] = border;
     }
 }
 
@@ -999,6 +1097,7 @@ static void draw_monitor_screen(u16* target) {
         draw_text_bitmap(target, 52, y + 6, state, is_recording ? green : text, 1);
         draw_phrase_boxes(target, track, y, total_duration, 91, 160, 19, 27,
                           track.muted ? green : accent, line);
+        draw_direct_note_events(target, track, y, total_duration, green, line);
         if (is_recording && visual_track.duration_ms > 0) {
             int right = 91 + (int)(((uint64_t)visual_track.duration_ms * 160u) /
                                    (total_duration == 0 ? visual_track.duration_ms : total_duration));
@@ -1452,8 +1551,8 @@ static void draw_trim_editor() {
     for (int y = 0; y < 192; ++y)
         for (int x = 0; x < 256; ++x) bottom_bitmap[y * 256 + x] = background;
     fill_rect(bottom_bitmap, 3, 2, 252, 24, panel);
-    draw_text_bitmap(bottom_bitmap, 8, 7, "EDIT TAKE", green, 1);
-    draw_text_bitmap(bottom_bitmap, 82, 7, "TOUCH NOTE", text, 1);
+    draw_text_bitmap(bottom_bitmap, 8, 7, note_insert_active ? "INSERT NOTE" : "EDIT TAKE", green, 1);
+    draw_text_bitmap(bottom_bitmap, 82, 7, note_insert_active ? "PROVISIONAL" : "TOUCH NOTE", text, 1);
     draw_text_bitmap(bottom_bitmap, 167, 7, "START END MOVE", text, 1);
     if (trim_raw_duration_ms == 0) trim_raw_duration_ms = 1;
     for (uint32_t step = 0; step <= (trim_raw_duration_ms * 4u) / pulse_ms + 1u; ++step) {
@@ -1843,6 +1942,12 @@ int main() {
             if (phrase_index >= 0) {
                 phrase_picker_selected = phrase_index;
                 open_phrase_editor(selected_track, phrase_index);
+            } else if (touch.py >= 30 + selected_track * 37 &&
+                       touch.py < 30 + (selected_track + 1) * 37 &&
+                       preview_note_midi >= 0) {
+                uint32_t duration = song_duration_ms();
+                if (duration == 0) duration = pulse_ms;
+                start_note_insertion(timeline_ms_for_x(touch.px, duration));
             }
         } else if ((held & KEY_TOUCH) && touch.py >= TOUCH_TIMELINE_TOP && touch.py < 192) {
             if (touch.px < 84) {

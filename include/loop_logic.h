@@ -66,6 +66,49 @@ inline uint32_t snap_note_duration(uint32_t duration_ms, uint32_t pulse_ms) {
     return snapped < quarter ? quarter : snapped;
 }
 
+// Experimental round-1 composer state. It is deliberately separate from
+// Phrase so the old capture/accept path remains available for comparison.
+struct PendingNoteInsertion {
+    bool active;
+    NoteEvent event;
+};
+
+inline void begin_note_insertion(PendingNoteInsertion& pending, int16_t midi_note,
+                                 uint8_t instrument_id, uint32_t requested_ms,
+                                 uint32_t pulse_ms, uint32_t range_start_ms = 0) {
+    PulseGrid grid{pulse_ms};
+    uint32_t start = pulse_ms == 0 ? requested_ms : grid.snap(requested_ms);
+    if (start < range_start_ms) start = range_start_ms;
+    uint32_t duration = pulse_ms == 0 ? 1 : snap_note_duration(grid.time(1), pulse_ms);
+    pending.event = {start, start + duration, midi_note, instrument_id, 0, 0};
+    pending.active = true;
+}
+
+inline void cancel_note_insertion(PendingNoteInsertion& pending) {
+    pending = {};
+}
+
+inline bool commit_note_insertion(Track& track, PendingNoteInsertion& pending) {
+    if (!pending.active || track.event_count >= MAX_TRACK_EVENTS ||
+        pending.event.end_ms <= pending.event.start_ms) return false;
+    for (uint16_t i = 0; i < track.event_count; ++i) {
+        const NoteEvent& current = track.events[i];
+        if (pending.event.start_ms < current.end_ms && current.start_ms < pending.event.end_ms)
+            return false;
+    }
+    uint16_t insert_at = 0;
+    while (insert_at < track.event_count &&
+           track.events[insert_at].start_ms < pending.event.start_ms) ++insert_at;
+    for (uint16_t i = track.event_count; i > insert_at; --i)
+        track.events[i] = track.events[i - 1];
+    track.events[insert_at] = pending.event;
+    ++track.event_count;
+    if (track.duration_ms < pending.event.end_ms) track.duration_ms = pending.event.end_ms;
+    track.occupied = true;
+    pending = {};
+    return true;
+}
+
 // Loop boundaries use complete metronome pulses. Note events may still use
 // the finer four-step grid; only the cycle length must be phase-stable.
 inline uint32_t snap_loop_boundary(uint32_t value_ms, uint32_t pulse_ms) {

@@ -8,7 +8,7 @@ DS Stylophone / Looper es un instrumento musical para Nintendo DS y DSi. La pant
 
 - **Franjas tactiles `0`-`11`**: producen notas cromaticas y siempre muestran numeros. La franja inferior contiene los controles compactos; el timeline aparece en ella al mantener `SELECT`.
 - **Octava**: determina la altura de las franjas; se puede seleccionar de la 2 a la 6.
-- **Pista**: hay tres pistas independientes. Cada pista contiene una secuencia de frases consecutivas.
+- **Pista**: hay tres pistas independientes. El flujo antiguo conserva frases; la exploración de compositor también puede añadir `NoteEvent` individuales directamente al ciclo global.
 - **Frase**: captura una interpretacion con su timing relativo, duracion y timbre por evento. Puede contener silencios al principio y al final.
 - **Timeline global**: las tres pistas avanzan sobre el mismo reloj. El transporte puede pausarse, detenerse al final o repetir una selección temporal común a las tres pistas.
 - **SELECT / selector de frases**: mantener `SELECT` intercambia la superficie de trabajo: el teclado queda visible arriba y abajo aparecen las tres pistas con la misma escala temporal y las mismas cajas de frase que el monitor superior. Cada repetición aparece como una caja consecutiva. Toca una caja para abrir el mismo editor de notas usado durante la aceptación; no hay playhead ni selección global.
@@ -27,8 +27,8 @@ Toca una franja para producir su nota. Tambien puedes tocar y arrastrar el stylu
 | Pantalla tactil | Tocar o arrastrar por las franjas `0`-`11`. |
 | D-pad arriba/abajo | Subir o bajar octava. En aceptación, aumentar o reducir repeticiones. |
 | D-pad izquierda/derecha | Seleccionar la pista anterior o siguiente. |
-| `A` | Abrir/cerrar una captura; en recorte, aceptar la frase. |
-| `B` corto | Borrar el ultimo token del diario; en recorte, descartar la captura. |
+| `A` | Abrir/cerrar una captura; en recorte, aceptar la frase o confirmar experimentalmente una nota individual. |
+| `B` corto | Borrar el ultimo token del diario; en recorte, descartar la captura o cancelar una inserción individual sin residuo. |
 | `B` mantenido | Limpiar el diario. |
 | `Y` | Activar/desactivar `LOOP ON/OFF` al soltarlo. El loop siempre respeta la selección temporal actual. |
 | `L` durante un toque | Mantener/sostener la cola de la nota; al grabar, el evento termina al soltar la franja y la cola usa `SUS 1..10`. |
@@ -44,6 +44,17 @@ Toca una franja para producir su nota. Tambien puedes tocar y arrastrar el stylu
 | `X` | Cambiar al siguiente timbre. |
 
 ## 5. Grabar y construir frases
+
+### Compositor experimental de notas individuales
+
+1. Toca una franja fuera del selector para preescucharla; esto no cambia ninguna pista.
+2. Mantén `SELECT` para mostrar el timeline y toca un hueco de la fila de la pista seleccionada. Se abre `INSERT NOTE` con una nota provisional usando la última franja preescuchada.
+3. Arrastra el centro de la nota para moverla y sus bordes para cambiar `START` o `END`. `START` reproduce la preview del ciclo global.
+4. Pulsa `A` para colocar el `NoteEvent` en la pista o `B` para cancelarlo. Mientras aparece `INSERT NOTE`, la composición todavía no ha cambiado.
+
+Esta confirmación `A/B` es deliberadamente experimental para esta ronda. El siguiente revisor debe intentar eliminarla y conservar el gesto directo si resulta suficientemente claro y cancelable.
+
+El compositor no migra frases ni permite todavía zoom, polifonía, overdub o persistencia. Las frases anteriores siguen usando el flujo de captura y aceptación descrito abajo.
 
 No existe una pista master. Cualquier pista puede ser la primera en grabarse.
 

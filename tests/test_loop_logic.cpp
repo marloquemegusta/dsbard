@@ -118,5 +118,30 @@ int main() {
     assert(snapped.events[1].start_ms == 1000 && snapped.events[1].end_ms == 3000);
     assert(snapped.events[2].start_ms == 3000 && snapped.events[2].end_ms == 3250);
     assert(snapped.events[2].sustain_on_release == 1);
+
+    PendingNoteInsertion pending{};
+    begin_note_insertion(pending, 640, 3, 1120, 1000, 0);
+    assert(pending.active);
+    assert(pending.event.start_ms == 1000);
+    assert(pending.event.end_ms == 1250);
+    assert(pending.event.midi_note == 640);
+    assert(pending.event.instrument_id == 3);
+
+    Track composed{};
+    composed.occupied = true;
+    composed.duration_ms = 2000;
+    composed.event_count = 1;
+    composed.events[0] = {0, 500, 60, 1, 0};
+    assert(commit_note_insertion(composed, pending));
+    assert(!pending.active);
+    assert(composed.event_count == 2);
+    assert(composed.events[1].start_ms == 1000);
+    assert(composed.events[1].end_ms == 1250);
+
+    PendingNoteInsertion cancelled{};
+    begin_note_insertion(cancelled, 62, 4, 500, 1000, 0);
+    cancel_note_insertion(cancelled);
+    assert(!cancelled.active);
+    assert(cancelled.event.start_ms == 0 && cancelled.event.end_ms == 0);
     return 0;
 }

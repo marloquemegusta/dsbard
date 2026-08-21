@@ -45,6 +45,7 @@ Este archivo es la copia versionada del tablero. La interfaz visual es [`KANBAN.
   - **Objetivo de esta exploración:** probar una composición basada en `NoteEvent` individuales, con teclado como preescucha y timeline como lugar de inserción/edición, reutilizando el reloj, el audio, las tres pistas y la superficie táctil existentes.
   - **Primera ronda:** implementar el candidato mínimo que permita preescuchar una nota, colocarla en una pista, moverla, ajustar su duración, reproducir el ciclo global y cancelar una inserción sin residuo. Mantener `Phrase` para compatibilidad mientras no exista una migración validada.
   - **Fuera de alcance inicial:** eliminar todo el almacenamiento de frases, polifonía, zoom, persistencia, overdub, cuantización avanzada y validación física.
+   - **Decisión experimental R1:** `A` confirma y `B` cancela una inserción provisional para mantener una salida segura; la siguiente revisión debe intentar eliminar esa confirmación mediante una prueba de gesto directo.
   - **Terminado de la exploración:** una traza de usuario virtual completa, tests host de inserción/edición/reproducción y una decisión documentada de aceptar, corregir o descartar el candidato. Mover a `Revisión` solo tras verificar la ronda.
 
 - **K-010 — Timeline táctil, metrónomo y corrección rítmica mínima** [feature, ux, looper, ritmo, grabación] — **En curso**
