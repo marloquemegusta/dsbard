@@ -40,7 +40,14 @@ Este archivo es la copia versionada del tablero. La interfaz visual es [`KANBAN.
 
 ## En curso
 
-- **K-011 — Exploración: compositor de notas individuales** [exploración, feature, ux, looper] — **Revisión**
+- **K-011 — DEPRECADO: exploración con modo equipo** [exploración, feature, ux, looper] — **Revisión**
+  - El experimento de la rama `codex/note-composer-redesign` no consiguió expresar el rediseño en la ROM y queda abandonado. No continuar ni fusionar sus commits.
+  - La intención recuperable y el nuevo ticket están documentados en [`docs/note-composer-redesign-brief.md`](docs/note-composer-redesign-brief.md).
+
+- **K-012 — Rediseño: compositor por descubrimiento de notas** [feature, ux, looper, composición] — **Todo**
+  - Historia de usuario: al escuchar una canción, quiero probar notas en el teclado y colocarlas directamente en una línea temporal por pista, para construir una base y capas sin tener que tocar una frase perfecta a tempo.
+  - Criterio inicial: pantalla de compositor visible, teclado como preescucha, notas individuales movibles y estirables, tres pistas con reloj global, sin flujo obligatorio de captura/aceptación de frases.
+  - Alcance, restricciones, escenario de 20 segundos y criterios completos: [`docs/note-composer-redesign-brief.md`](docs/note-composer-redesign-brief.md).
   - **Fricción observada:** la frase mezcla captura, repetición, edición y sincronización; para descubrir una melodía el usuario tiene que interpretar a tempo y corregir después.
   - **Objetivo de esta exploración:** probar una composición basada en `NoteEvent` individuales, con teclado como preescucha y timeline como lugar de inserción/edición, reutilizando el reloj, el audio, las tres pistas y la superficie táctil existentes.
   - **Primera ronda:** implementar el candidato mínimo que permita preescuchar una nota, colocarla en una pista, moverla, ajustar su duración, reproducir el ciclo global y cancelar una inserción sin residuo. Mantener `Phrase` para compatibilidad mientras no exista una migración validada.

@@ -1,5 +1,9 @@
 # Modo subagentes
 
+> **Estado: DEPRECADO para este proyecto (2026-08-22).** El intento de usar este proceso para el rediseño del compositor produjo una implementación parcial, varias rondas de correcciones y una ROM que no expresaba el cambio de producto esperado. No activar este modo por defecto ni usarlo para retomar el rediseño. La especificación recuperable está en [`note-composer-redesign-brief.md`](note-composer-redesign-brief.md).
+
+Este documento se conserva como registro de un proceso experimental, no como una instrucción operativa vigente.
+
 Proceso general para trabajar con varias perspectivas de Codex sobre una feature, un bug o una revisión. Este documento no describe una feature concreta del producto: define cómo organizar el trabajo cuando el usuario diga «usa el modo subagentes», «modo equipo» o una instrucción equivalente.
 
 ## 1. Qué significa activar el modo
