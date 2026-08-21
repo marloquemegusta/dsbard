@@ -11,7 +11,7 @@ DS Stylophone / Looper es un instrumento musical para Nintendo DS y DSi. La pant
 - **Pista**: hay tres pistas independientes. Cada pista contiene una secuencia de frases consecutivas.
 - **Frase**: captura una interpretacion con su timing relativo, duracion y timbre por evento. Puede contener silencios al principio y al final.
 - **Timeline global**: las tres pistas avanzan sobre el mismo reloj. El transporte puede pausarse, detenerse al final o repetir una selección temporal común a las tres pistas.
-- **FOCUS TIMELINE**: mantener `SELECT` intercambia la superficie de trabajo: el teclado queda visible arriba y abajo aparece el editor de notas de la pista seleccionada. `←/→` cambia de pista; no hay playhead ni tiradores de selección globales en esta vista.
+- **SELECT / selector de frases**: mantener `SELECT` intercambia la superficie de trabajo: el teclado queda visible arriba y abajo aparecen las tres pistas con la misma escala temporal y las mismas cajas de frase que el monitor superior. Cada repetición aparece como una caja consecutiva. Toca una caja para abrir el mismo editor de notas usado durante la aceptación; no hay playhead ni selección global.
 - **PULSE GRID**: el control `PULSE` define la duración del pulso en milisegundos. Cada pulso tiene cuatro pasos; las marcas y la corrección manual usan el mismo origen. El metrónomo audible está desactivado: `PULSE` solo sirve como reloj interno.
 - **Monitor superior**: cada caja representa una frase completa, incluidos sus silencios. Una frase repetida `xN` aparece como `N` cajas consecutivas.
 - **Diario**: registro temporal de las franjas tocadas; guarda valores `0`-`11`.
@@ -40,7 +40,7 @@ Toca una franja para producir su nota. Tambien puedes tocar y arrastrar el stylu
 | `L` + `B` | Deshacer la ultima frase aceptada. |
 | `START` | Pausar o reanudar la cancion; si termino sin loop, volver a arrancar desde el inicio de la ventana. En recorte, reproducir o detener la preview. |
 | `SELECT` corto | Silenciar o activar la pista seleccionada. |
-| `SELECT` mantenido | Activar o cerrar `FOCUS TIMELINE`. |
+| `SELECT` mantenido | Abrir o cerrar el selector de frases. |
 | `X` | Cambiar al siguiente timbre. |
 
 ## 5. Grabar y construir frases
@@ -51,18 +51,18 @@ No existe una pista master. Cualquier pista puede ser la primera en grabarse.
 2. Pulsa `A`. La pista entra en `WAIT`, pero la captura ya esta abierta.
 3. Toca cuando quieras. Se conserva el timing real, incluido el silencio entre `A` y la primera nota.
 4. Pulsa `A` para cerrar la captura. Todavia no se guarda.
-5. Mantén `SELECT` para entrar en `FOCUS TIMELINE`; el teclado queda arriba y abajo aparece la pista seleccionada con sus notas individuales.
-6. Toca el centro de una nota para moverla, o uno de sus bordes para cambiar `START` o `END`. `←/→` permite editar otra pista. Esta vista no usa playhead ni selección global `INICIO..FIN`.
-7. Pulsa `START` para reproducir o detener en loop la preview del rango actual. Mientras suena, una barra verde indica la posición actual dentro del rango.
-8. En la aceptación, toca y arrastra un bloque de nota: el borde izquierdo edita `START`, el derecho `END` y el centro mueve la nota. Mientras mantienes pulsado, el bloque sigue libremente al stylus; al soltar, se ajusta al cuarto de pulso más cercano. Pulsa `L` corto con una nota seleccionada para activar o desactivar su sustain; la marca `S` indica que está activo. Para recortar la frase, toca las etiquetas finas `S` o `E` de la franja superior y arrastra el límite correspondiente. Los cambios respetan silencios y no solapan notas vecinas.
-9. Usa arriba/abajo para elegir el número de repeticiones, mostrado como `xN`, y pulsa `A` para aceptar. La frase se añade inmediatamente después de la última frase de esa pista.
-10. Pulsa `B` para descartar la captura sin modificar la pista; la copia original conserva exactamente sus tiempos.
+5. Mantén `SELECT` para abrir el selector de frases; el teclado queda arriba y abajo aparecen las tres pistas con la misma representación temporal del monitor superior.
+6. Toca una caja concreta. Se abre el mismo editor de aceptación, ahora con una copia de esa frase.
+7. Toca el centro de una nota para moverla, o uno de sus bordes para cambiar `START` o `END`. Mientras mantienes pulsado, el bloque sigue libremente al stylus; al soltar, se ajusta al cuarto de pulso más cercano.
+8. Pulsa `L` corto con una nota seleccionada para activar o desactivar su sustain; la marca `S` indica que está activo. Ajusta también los límites `S` y `E` de la frase si hace falta.
+9. Pulsa `START` para reproducir o detener la preview. Pulsa `A` para reemplazar la frase editada; sus repeticiones conservan el mismo contenido actualizado. Pulsa `B` para cancelar y volver al selector sin modificarla.
+10. Pulsa `B` otra vez en el selector para cerrarlo. Las frases posteriores se recolocan si la duración de la frase editada ha cambiado.
 
  El recorte desplaza el origen temporal y fija la duracion de la frase. Al cerrar la grabacion, cada inicio y duracion se redondea al cuarto de pulso mas cercano usando `PULSE`; la duracion minima es un cuarto. Los silencios iniciales o finales se conservan solo si quedan dentro del rango elegido.
 
-Una repetición no crea un loop independiente: `x20` coloca veinte copias consecutivas de la misma frase en la pista. En `FOCUS TIMELINE` se editan las notas de la pista, no las cajas de repetición.
+Una repetición no crea un loop independiente: `x20` coloca veinte copias consecutivas de la misma frase en la pista. El selector edita la fuente y actualiza todas sus repeticiones.
 
-`Y` activa o desactiva el loop al soltarlo. En el uso normal el rango es toda la canción; `FOCUS TIMELINE` no cambia ese rango y se dedica a editar notas de la pista seleccionada.
+`Y` activa o desactiva el loop al soltarlo. En el uso normal el rango es toda la canción; el selector de frases no cambia ese rango ni el transporte.
 
 Con el loop desactivado, el transporte se detiene al final de la ventana y deja de sonar. `START` vuelve a arrancar desde el principio de esa ventana. Con el loop activado, al alcanzar el final vuelve automaticamente a su inicio.
 
@@ -92,4 +92,4 @@ No se guardan datos entre sesiones.
 
 ## 9. Referencia rapida
 
-`Tactil`: tocar, sliders o timeline · `↑/↓`: octava o repeticiones en aceptación · `←/→`: pista · `A`: captura/aceptar · `B`: diario o cancelar · `Y`: loop ON/OFF · `START`: transporte/preview · `X`: timbre · `SELECT`: mute o FOCUS TIMELINE · `L+B`: deshacer frase · `R+B`: borrar pista.
+`Tactil`: tocar, sliders o selector/editor de frases · `↑/↓`: octava o repeticiones en aceptación · `←/→`: pista · `A`: captura/aceptar · `B`: diario, cancelar o cerrar selector · `Y`: loop ON/OFF · `START`: transporte/preview · `X`: timbre · `SELECT`: mute o selector de frases · `L+B`: deshacer frase · `R+B`: borrar pista.

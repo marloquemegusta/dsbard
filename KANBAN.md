@@ -19,12 +19,10 @@ Este archivo es la copia versionada del tablero. La interfaz visual es [`KANBAN.
 - **K-009 — Playhead verde en la preview de recorte** [feature, ux, grabación] — **Revisión**
   - Mostrar una barra verde que avance sobre el gráfico inferior mientras `START` reproduce el rango recortado.
   - Terminado: la barra sigue el tiempo de preview dentro de `START..END`, desaparece al detener y la documentación queda actualizada.
-- **Revisión**
+## Revisión
 - **K-005 — Panel FX compacto para vibrato y sustain** [ux, audio]
   - Quitar glide y reutilizar la franja `160..192`: controles FX en modo normal y timeline de recorte durante la aceptación.
   - Terminado: vibrato y cola de sustain ajustables con sliders tactiles cuantizados, sustain activado manteniendo `L`, sin tocar las 12 zonas cromaticas; tests, build y documentación actualizados.
-## Revisión
-
 - **K-004 — Corregir píxeles sobrantes en los tiradores de recorte** [bug, ux, grabación]
   - Separar visualmente los tiradores verdes `START`/`END` de sus etiquetas para que las letras no invadan la barra.
   - Terminado: tiradores rectangulares sin píxeles salientes en la captura del menú de recorte; pruebas de lógica y build correctas.
@@ -40,13 +38,13 @@ Este archivo es la copia versionada del tablero. La interfaz visual es [`KANBAN.
   - Recoger mejoras de controles, ayuda y feedback sin romper la interfaz de 12 zonas.
   - Terminado: Lista priorizada con alcance y criterio de aceptación por idea.
 
-## Revisión
+## En curso
 
-- **K-010 — Timeline táctil, pulso y corrección rítmica mínima** [feature, ux, looper, ritmo, grabación] — **Revisión**
+- **K-010 — Timeline táctil, pulso y corrección rítmica mínima** [feature, ux, looper, ritmo, grabación] — **En curso**
   - **Fricción observada:** al repetir muchas veces una base no se puede volver inmediatamente al comienzo útil; `LOOP 1` repite las tres copias de una captura `x3` porque la UI muestra tres cajas pero el transporte cuenta una `Phrase` lógica; y el intérprete comete errores grandes de duración o posición que un autoajuste no puede interpretar.
   - **Objetivo:** sustituir `LOOP N` por una selección temporal directa y reutilizar una sola rejilla de pulso para transporte, referencias visuales y corrección manual. `PULSE` es solo un reloj interno: el metrónomo audible queda desactivado. Tocar normalmente no debe exigir tempo, compás, proyecto ni editor.
   - **Conceptos públicos permitidos:**
-    1. `FOCUS TIMELINE`: una acción de un solo botón intercambia las pantallas y lleva el monitor de pistas a la pantalla táctil. Estado visible y reversible, no editor genérico.
+    1. `SELECT` mantenido: muestra un selector táctil de frases de las tres pistas y permite abrir el editor común de aceptación para una frase concreta. Estado visible y reversible, no editor genérico.
     2. `PULSE GRID`: duración del pulso y subdivisión fija de cuatro pasos por pulso. No añadir todavía compás, acentos ternarios/cuaternarios, nombres de notas ni cuantización automática.
   - **Modelo mínimo:**
     - `TimelineSelection { cursor_ms, range_start_ms, range_end_ms, explicit_range }`.
@@ -55,7 +53,7 @@ Este archivo es la copia versionada del tablero. La interfaz visual es [`KANBAN.
     - `PulseGrid` convierte sin deriva mediante `time(step) = step * pulse_ms / 4`; no acumular repetidamente `pulse_ms / 4`.
   - **Pack A, obligatorio primero — timeline táctil y transporte:**
     - Elegir una acción de un solo botón libre o recolocar explícitamente una función secundaria; no introducir otro acorde. Documentarla en `MANUAL.md`.
-    - En `FOCUS TIMELINE`: toque corto coloca `cursor_ms` y `transport_ms`; arrastre horizontal crea un rango ordenado `INICIO..FIN`; después se pueden arrastrar ambos tiradores. Mostrar selección, playhead y pista de referencia sin ocultar las tres pistas.
+    - El selector de frases muestra las tres pistas y sus frases como cajas táctiles; no añade playhead ni rango global a esta superficie.
     - Snap híbrido: sin pulso, al borde de caja de repetición más cercano; con rejilla, a cuartos de pulso, dando prioridad a un borde de caja cercano. Una captura `x3` expone tres cajas seleccionables aunque internamente siga siendo una `Phrase` con `repeat_count=3`.
     - `Y` solo conmuta `LOOP ON/OFF`. Eliminar la interacción y texto público `LOOP N`/`loop_phrase_count`; no hace falta cambiar el almacenamiento de `Phrase` ni desduplicar eventos.
     - `START` reproduce/pausa. Si terminó, reinicia en `range_start_ms`. Buscar el cursor no apaga el loop ni altera el rango.
@@ -73,8 +71,8 @@ Este archivo es la copia versionada del tablero. La interfaz visual es [`KANBAN.
     - `START` alterna preview; `A` acepta; `B` descarta recuperando exactamente la captura original. Conservar repeticiones o recolocarlas en controles táctiles documentados.
     - Reutilizar `build_trim_preview`, `accept_trim` y `PulseGrid`; no crear otro formato ni motor de playback.
   - **Pack D, solo tras validar A-C — frases anteriores:**
-    - Desde `FOCUS TIMELINE`, tocar una caja abre el mismo editor sobre una frase aceptada. No crear un segundo editor.
-    - Para `repeat_count > 1`, la opción mínima es editar la fuente y reflejar el cambio en todas las repeticiones. Editar una copia aislada requiere otra decisión de producto y queda fuera.
+    - Desde `SELECT` mantenido, mostrar un selector táctil de las tres pistas; tocar una caja abre el mismo editor de aceptación sobre esa frase aceptada. No crear un segundo editor ni un playhead global.
+    - Para `repeat_count > 1`, editar la fuente y reflejar el cambio en todas sus repeticiones; `B` cancela y `A` reemplaza la frase conservando el orden de la pista.
   - **Fuera de alcance:** secuenciador general, piano roll por alturas, mover pitch, overdub, persistencia, zoom complejo, compás, cuantización automática global, edición simultánea de varias frases o rediseño de las 12 zonas.
   - **Orden para el agente:** leer `AGENTS.md`, `STATUS.md`, `KNOWN_ISSUES.md`, `MANUAL.md`, `include/loop_logic.h` y las zonas relevantes de `source/main.cpp`; mover `K-010` a `En curso` antes de editar; implementar y verificar A, luego B y luego C. No iniciar D sin A-C completas. Ante una decisión perceptible no fijada, preguntar.
   - **Terminado / evidencia para Revisión:**
@@ -84,7 +82,7 @@ Este archivo es la copia versionada del tablero. La interfaz visual es [`KANBAN.
     4. Una nota demasiado larga se acorta varios cuartos y otra se desplaza; no hay solapamiento; preview/aceptación conserva pitch, timbre y sustain; cancelar conserva tiempos originales.
     5. Añadir trazas temporales bajo `DS_DEBUG_TRACE` para `FOCUS`, `SEEK`, `RANGE`, `WRAP/STOP`, `GRID` y `NOTE_EDIT`, con tiempos y resultado; no mostrar diagnóstico técnico en UI final.
     6. Ejecutar `python tests/test_loop_logic.py`, compilar/ejecutar `tests/test_loop_logic.cpp`, `build.ps1` y `tools/run-looper-flow.ps1` hasta `LOOPER_FLOW_RESULT=PASS`.
-    7. Crear escenario melonDS específico: intercambiar pantallas, seleccionar una caja de `x3`, revisar visualmente `INICIO/FIN`/playhead y probar loop/parada. Inspeccionar capturas; un hash no basta. Para audio, prueba auditiva intencional con `-EnableSound`; no afirmar validación física DSi.
+    7. Validación manual en la ROM: mantener `SELECT`, tocar una frase de cada pista, abrir el editor común, mover una nota, cambiar `START`/`END`, cancelar con `B` y aceptar con `A`; no declarar validación física de DSi sin prueba explícita.
     8. Actualizar `MANUAL.md`, `STATUS.md` y, solo si queda un problema real, `KNOWN_ISSUES.md`. Mover a `Revisión`, no a `Hecho`, hasta validar en hardware.
   - **Guía de diagnóstico:**
     - Si se repite `x3` completo, revisar `Phrase.start_ms + repetition * duration_ms`; no usar `phrase_count` como número de cajas.

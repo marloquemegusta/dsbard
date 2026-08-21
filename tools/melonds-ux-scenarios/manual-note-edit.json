@@ -1,0 +1,21 @@
+{
+  "name": "manual-note-edit",
+  "bindings": { "A": 65 },
+  "steps": [
+    { "action": "wait", "ms": 1000 },
+    { "action": "button", "name": "A", "hold_ms": 300 },
+    { "action": "capture", "name": "00-wait" },
+    { "action": "touch", "x": 18, "y": 240, "hold_ms": 350 },
+    { "action": "wait", "ms": 500 },
+    { "action": "touch", "x": 100, "y": 240, "hold_ms": 450 },
+    { "action": "wait", "ms": 300 },
+    { "action": "button", "name": "A", "hold_ms": 600 },
+    { "action": "capture", "name": "01-nota-original" },
+    { "action": "drag", "x0": 160, "y0": 288, "x1": 180, "y1": 288, "hold_ms": 350 },
+    { "action": "capture", "name": "02-nota-movida" },
+    { "action": "drag", "x0": 130, "y0": 288, "x1": 110, "y1": 288, "hold_ms": 350 },
+    { "action": "capture", "name": "03-start-extendido" },
+    { "action": "drag", "x0": 190, "y0": 288, "x1": 215, "y1": 288, "hold_ms": 350 },
+    { "action": "capture", "name": "04-end-extendido" }
+  ]
+}

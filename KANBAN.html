@@ -37,7 +37,7 @@
 Objetivo de producto: sustituir el selector LOOP N por una selección temporal directa y reutilizar una sola rejilla de pulso para transporte, referencias visuales y corrección manual. PULSE es solo un reloj interno: el metrónomo audible queda desactivado. Debe seguir sintiéndose como un instrumento: tocar normalmente no exige tempo, compás, proyecto ni editor.
 
 Dos conceptos públicos, no más:
-1. FOCUS TIMELINE: una acción de un solo botón intercambia las pantallas y lleva el monitor de pistas a la pantalla táctil. Es un estado visible y reversible, no un editor genérico.
+1. SELECT / selector de frases: una acción mantenida intercambia las pantallas y lleva las cajas de las tres pistas a la pantalla táctil. Tocar una caja abre el editor de aceptación de esa frase; no es un editor global.
 2. PULSE GRID: duración del pulso y subdivisión fija de 4 pasos por pulso. No añadir todavía compás, acentos ternarios/cuaternarios ni nombres de notas; las capturas recién grabadas sí redondean inicio y duración al cuarto de pulso.
 
 Modelo mínimo:
@@ -48,7 +48,7 @@ Modelo mínimo:
 
 Pack A, obligatorio primero — timeline táctil y transporte:
 - Elegir una acción de un solo botón libre o recolocar de forma explícita una función secundaria existente; no introducir un acorde nuevo. Documentar la elección en MANUAL.md.
-- En FOCUS TIMELINE: toque corto sobre una pista coloca cursor_ms y transport_ms; arrastre horizontal crea un rango ordenado INICIO..FIN; después se pueden arrastrar ambos tiradores. Mostrar selección, playhead y pista de referencia sin ocultar las tres pistas.
+- En el selector de frases: tocar una caja concreta abre una copia editable de esa frase en el editor de aceptación. No mostrar playhead ni rango global.
 - Ajuste híbrido de límites: antes de existir pulso, snap al borde de caja de repetición más cercano; con PulseGrid, snap a cuartos de pulso, dando prioridad a un borde de caja cercano. Una captura x3 expone tres cajas seleccionables aunque internamente siga siendo una Phrase con repeat_count=3.
 - Y solo conmuta LOOP ON/OFF. Eliminar la interacción y el texto público LOOP N/loop_phrase_count; no es necesario cambiar el almacenamiento de Phrase ni desduplicar eventos para resolverlo.
 - START reproduce/pausa. Si estaba detenido al final, reinicia en range_start. Cambiar o buscar el cursor no debe apagar el loop ni alterar el rango.
@@ -69,8 +69,8 @@ Pack C — corrección manual de la captura recién grabada:
 - Reutilizar build_trim_preview/accept_trim y el mismo PulseGrid; no crear otro formato persistente ni otro motor de playback.
 
 Pack D, solo después de validar A-C — frases anteriores:
-- Desde FOCUS TIMELINE, tocar una caja permite abrir el mismo editor de intervalos sobre una frase ya aceptada. No crear un segundo editor.
-- Antes de implementar, comprobar y documentar cómo editar una Phrase con repeat_count mayor que 1: la opción mínima esperada es editar la fuente y reflejar el cambio en todas sus repeticiones. Si el usuario necesitara editar solo una copia, eso exige otra decisión de producto y queda fuera de este ticket.
+- Desde SELECT mantenido, tocar una caja abre el mismo editor de aceptación sobre una frase ya aceptada. A reemplaza la fuente; B cancela. No crear un segundo editor.
+- Para repeat_count mayor que 1, editar la fuente y reflejar el cambio en todas sus repeticiones. Editar una copia aislada queda fuera.
 
 Fuera de alcance: secuenciador general, piano roll por alturas, mover pitch, overdub, persistencia, zoom complejo, compás, cuantización automática global, edición simultánea de varias frases o rediseño de las 12 zonas táctiles.
 
@@ -81,7 +81,7 @@ Orden para el agente: leer AGENTS.md, STATUS.md, KNOWN_ISSUES.md, MANUAL.md, inc
 4. Caso de edición: una nota demasiado larga se acorta manualmente varios cuartos de pulso; otra se desplaza; los eventos vecinos no se solapan; preview y aceptación conservan pitch, timbre y sustain; cancelar conserva los tiempos originales.
 5. Instrumentación temporal de depuración: añadir DS_TRACE compactas para FOCUS, SEEK, RANGE, WRAP/STOP, GRID y NOTE_EDIT con tiempos absolutos y resultado. Retirarlas o dejarlas bajo DS_DEBUG_TRACE; no mostrar diagnósticos técnicos en la UI final.
 6. Ejecutar python tests/test_loop_logic.py, compilar/ejecutar tests/test_loop_logic.cpp, build.ps1 y tools/run-looper-flow.ps1 hasta LOOPER_FLOW_RESULT=PASS.
-7. Crear un escenario melonDS relacionado exclusivamente con FOCUS TIMELINE que intercambie pantallas, seleccione una caja de x3, revise visualmente INICIO/FIN/playhead y pruebe loop y parada. Las capturas deben inspeccionarse; un hash diferente no basta. Para audio, hacer prueba auditiva intencional con -EnableSound; no afirmar validación física de DSi.
+7. Validación manual en la ROM: mantener SELECT, tocar una frase de cada pista, abrir el editor común, mover una nota, cambiar START/END, cancelar con B y aceptar con A; no declarar validación física de DSi sin prueba explícita.
 8. Actualizar MANUAL.md por cada control o estado visible, STATUS.md al terminar y KNOWN_ISSUES.md solo si queda un problema real. Mover a Revisión, no a Hecho, hasta la validación del usuario en hardware.
 
 Diagnóstico si falla:
@@ -91,7 +91,7 @@ Diagnóstico si falla:
 - Si una edición altera otra nota, comparar copia original y editable evento por evento y verificar clamps con anterior.end_ms y siguiente.start_ms.
 - Si la UI parece correcta pero el comportamiento no, validar primero helpers host-side y después recoger una traza o escenario pertinente según AGENTS.md; no abrir emuladores como smoke genérico.`,tags:'feature, ux, looper, ritmo, grabación',column:'todo'}
     ];
-    const key='ds-stylophone-kanban-v1'; const initialK010=initial.find(c=>c.id==='K-010'); if(initialK010) initialK010.column='review'; let cards=JSON.parse(localStorage.getItem(key)||'null')||structuredClone(initial); const k010=cards.find(c=>c.id==='K-010'); if(k010){k010.column='review';persist();} let dragged=null;
+    const key='ds-stylophone-kanban-v1'; const initialK010=initial.find(c=>c.id==='K-010'); if(initialK010) initialK010.column='doing'; let cards=JSON.parse(localStorage.getItem(key)||'null')||structuredClone(initial); const k010=cards.find(c=>c.id==='K-010'); if(k010){k010.column='doing';persist();} let dragged=null;
     const $=id=>document.getElementById(id); function persist(){localStorage.setItem(key,JSON.stringify(cards));}
     function render(){ $('board').innerHTML=''; columns.forEach(col=>{const el=document.createElement('section'); el.className='column'; el.dataset.column=col.id; el.innerHTML=`<div class="column-head"><h2>${col.name}</h2><span><span class="count"></span> <span class="wip">${col.wip}</span></span></div><div class="cards"></div>`; const list=el.querySelector('.cards'); const items=cards.filter(c=>c.column===col.id); el.querySelector('.count').textContent=items.length; items.forEach(card=>{const a=document.createElement('article'); a.className='card'; a.draggable=true; a.dataset.id=card.id; a.innerHTML=`<h3>${esc(card.title)}</h3><p>${esc(card.description)}</p><div class="meta"><span>${esc(card.id)} · <span class="tag">${esc(card.tags||'sin etiqueta')}</span></span><span>editar</span></div>`; a.onclick=()=>openEditor(card); a.ondragstart=e=>{dragged=card.id;e.stopPropagation()}; a.ondragend=()=>dragged=null; list.append(a)}); el.ondragover=e=>{e.preventDefault();el.classList.add('over')}; el.ondragleave=()=>el.classList.remove('over'); el.ondrop=e=>{e.preventDefault();el.classList.remove('over');const c=cards.find(x=>x.id===dragged);if(c){c.column=col.id;persist();render()}}; $('board').append(el)}); }
     function esc(s){return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
