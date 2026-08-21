@@ -40,6 +40,13 @@ Este archivo es la copia versionada del tablero. La interfaz visual es [`KANBAN.
 
 ## En curso
 
+- **K-011 — Exploración: compositor de notas individuales** [exploración, feature, ux, looper] — **En curso**
+  - **Fricción observada:** la frase mezcla captura, repetición, edición y sincronización; para descubrir una melodía el usuario tiene que interpretar a tempo y corregir después.
+  - **Objetivo de esta exploración:** probar una composición basada en `NoteEvent` individuales, con teclado como preescucha y timeline como lugar de inserción/edición, reutilizando el reloj, el audio, las tres pistas y la superficie táctil existentes.
+  - **Primera ronda:** implementar el candidato mínimo que permita preescuchar una nota, colocarla en una pista, moverla, ajustar su duración, reproducir el ciclo global y cancelar una inserción sin residuo. Mantener `Phrase` para compatibilidad mientras no exista una migración validada.
+  - **Fuera de alcance inicial:** eliminar todo el almacenamiento de frases, polifonía, zoom, persistencia, overdub, cuantización avanzada y validación física.
+  - **Terminado de la exploración:** una traza de usuario virtual completa, tests host de inserción/edición/reproducción y una decisión documentada de aceptar, corregir o descartar el candidato. Mover a `Revisión` solo tras verificar la ronda.
+
 - **K-010 — Timeline táctil, metrónomo y corrección rítmica mínima** [feature, ux, looper, ritmo, grabación] — **En curso**
   - **Fricción observada:** al repetir muchas veces una base no se puede volver inmediatamente al comienzo útil; `LOOP 1` repite las tres copias de una captura `x3` porque la UI muestra tres cajas pero el transporte cuenta una `Phrase` lógica; y el intérprete comete errores grandes de duración o posición que un autoajuste no puede interpretar.
   - **Objetivo:** sustituir `LOOP N` por una selección temporal directa y reutilizar un reloj global de pulso para transporte, metrónomo audible, referencias visuales y corrección manual. `PULSE` es el periodo real en milisegundos; cada marca emite un pitido breve de 100 ms. `A` y `R` no reinician el reloj: `A` entra en la fase actual y `R` solo silencia/des-silencia. Tocar normalmente no debe exigir compás, proyecto ni editor.
