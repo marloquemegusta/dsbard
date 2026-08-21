@@ -40,7 +40,7 @@ Este archivo es la copia versionada del tablero. La interfaz visual es [`KANBAN.
 
 ## En curso
 
-- **K-011 — Exploración: compositor de notas individuales** [exploración, feature, ux, looper] — **En curso**
+- **K-011 — Exploración: compositor de notas individuales** [exploración, feature, ux, looper] — **Revisión**
   - **Fricción observada:** la frase mezcla captura, repetición, edición y sincronización; para descubrir una melodía el usuario tiene que interpretar a tempo y corregir después.
   - **Objetivo de esta exploración:** probar una composición basada en `NoteEvent` individuales, con teclado como preescucha y timeline como lugar de inserción/edición, reutilizando el reloj, el audio, las tres pistas y la superficie táctil existentes.
   - **Primera ronda:** implementar el candidato mínimo que permita preescuchar una nota, colocarla en una pista, moverla, ajustar su duración, reproducir el ciclo global y cancelar una inserción sin residuo. Mantener `Phrase` para compatibilidad mientras no exista una migración validada.
