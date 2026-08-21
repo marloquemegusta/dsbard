@@ -149,11 +149,14 @@ inline bool replace_note_event(Track& track, uint16_t index, const NoteEvent& re
         if (replacement.start_ms < current.end_ms && current.start_ms < replacement.end_ms)
             return false;
     }
+    Track original = track;
     for (uint16_t i = index; i + 1 < track.event_count; ++i)
         track.events[i] = track.events[i + 1];
     --track.event_count;
     PendingNoteInsertion pending{true, replacement};
-    return commit_note_insertion(track, pending);
+    if (commit_note_insertion(track, pending)) return true;
+    track = original;
+    return false;
 }
 
 // Loop boundaries use complete metronome pulses. Note events may still use

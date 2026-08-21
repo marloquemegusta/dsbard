@@ -208,6 +208,14 @@ int main() {
     assert(find_direct_event_at(replaced, 1700) == 1);
     assert(!replace_note_event(replaced, 1, NoteEvent{200, 400, 61, 2, 0, 0}));
 
+    Track rejected_inside_phrase = mixed;
+    NoteEvent original = rejected_inside_phrase.events[1];
+    assert(!replace_note_event(rejected_inside_phrase, 1, NoteEvent{2400, 2500, 61, 2, 0, 0}));
+    assert(rejected_inside_phrase.event_count == mixed.event_count);
+    assert(rejected_inside_phrase.events[1].start_ms == original.start_ms);
+    assert(rejected_inside_phrase.events[1].end_ms == original.end_ms);
+    assert(rejected_inside_phrase.events[1].midi_note == original.midi_note);
+
     PendingNoteInsertion overlapping{};
     begin_note_insertion(overlapping, 64, 2, 1200, 1000, 0);
     Track occupied{};

@@ -616,8 +616,8 @@ static void accept_trim() {
         edited_event.start_ms += trim_start_ms;
         edited_event.end_ms += trim_start_ms;
         NoteEvent inserted_event = edited_event;
-        undo_track = target;
-        undo_slot = recording_slot;
+        Track previous_track = target;
+        int previous_slot = recording_slot;
         bool accepted = false;
         if (note_insert_existing) {
             accepted = loop_logic::replace_note_event(target, note_insert_existing_index, edited_event);
@@ -631,6 +631,8 @@ static void accept_trim() {
             cancel_trim();
             return;
         }
+        undo_track = previous_track;
+        undo_slot = previous_slot;
         undo_available = true;
         trim_active = false;
         trim_preview_playing = false;
