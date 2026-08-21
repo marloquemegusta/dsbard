@@ -1,0 +1,13 @@
+{
+  "name": "nombre-del-estado-ux",
+  "steps": [
+    { "action": "capture", "name": "00-inicial" },
+    { "action": "touch", "x": 12, "y": 240, "hold_ms": 120 },
+    { "action": "capture", "name": "01-tras-toque" },
+    {
+      "action": "manual",
+      "instructions": "Realiza los botones o gestos complejos que quieres inspeccionar; por ejemplo, inicia y cierra una captura para abrir el recorte."
+    },
+    { "action": "capture", "name": "02-estado-complejo" }
+  ]
+}

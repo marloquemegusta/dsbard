@@ -1,0 +1,29 @@
+{
+  "name": "focus-timeline",
+  "bindings": { "A": 65, "Start": 13, "Select": 83, "Up": 38, "Y": 89 },
+  "steps": [
+    { "action": "wait", "ms": 1000 },
+    { "action": "button", "name": "A", "hold_ms": 300 },
+    { "action": "capture", "name": "00-wait" },
+    { "action": "touch", "x": 18, "y": 240 },
+    { "action": "wait", "ms": 500 },
+    { "action": "touch", "x": 100, "y": 240 },
+    { "action": "button", "name": "A", "hold_ms": 300 },
+    { "action": "capture", "name": "01-trim" },
+    { "action": "button", "name": "Up", "hold_ms": 300 },
+    { "action": "button", "name": "Up", "hold_ms": 300 },
+    { "action": "button", "name": "A", "hold_ms": 300 },
+    { "action": "button", "name": "Select", "hold_ms": 1000 },
+    { "action": "capture", "name": "02-focus-timeline" },
+    { "action": "touch", "x": 185, "y": 225 },
+    { "action": "capture", "name": "03-third-box-range-playhead" },
+    { "action": "button", "name": "Y", "hold_ms": 300 },
+    { "action": "button", "name": "Start", "hold_ms": 300 },
+    { "action": "wait", "ms": 600 },
+    { "action": "capture", "name": "04-loop-selection" },
+    { "action": "button", "name": "Y", "hold_ms": 300 },
+    { "action": "button", "name": "Start", "hold_ms": 300 },
+    { "action": "wait", "ms": 1200 },
+    { "action": "capture", "name": "05-stop-at-selection-end" }
+  ]
+}

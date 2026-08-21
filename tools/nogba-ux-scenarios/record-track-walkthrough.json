@@ -1,0 +1,31 @@
+{
+  "name": "record-track-walkthrough",
+  "steps": [
+    { "action": "capture", "name": "00-inicial" },
+    {
+      "action": "manual",
+      "instructions": "Selecciona la pista deseada y pulsa A una vez para abrir la captura. Debe aparecer el estado WAIT."
+    },
+    { "action": "capture", "name": "01-wait" },
+    {
+      "action": "manual",
+      "instructions": "Toca varias franjas, deja algún silencio entre notas y pulsa A para cerrar la captura. Debe aparecer la interfaz de recorte con START, END y repeticiones."
+    },
+    { "action": "capture", "name": "02-recorte-inicial" },
+    {
+      "action": "manual",
+      "instructions": "Arrastra START y END para conservar o eliminar silencios. Ajusta repeticiones con arriba o abajo si quieres documentarlas."
+    },
+    { "action": "capture", "name": "03-recorte-ajustado" },
+    {
+      "action": "manual",
+      "instructions": "Pulsa START para iniciar la preview del recorte."
+    },
+    { "action": "capture", "name": "04-preview" },
+    {
+      "action": "manual",
+      "instructions": "Detén la preview con START y acepta la frase con A. Debe volver al modo normal con una frase visible en el monitor superior."
+    },
+    { "action": "capture", "name": "05-frase-aceptada" }
+  ]
+}

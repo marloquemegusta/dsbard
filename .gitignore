@@ -8,5 +8,6 @@ build/
 *.d
 tests/*.exe
 .codex-journal/
+artifacts/
 .official-nds-examples/
 .tools/

@@ -9,6 +9,8 @@ struct NoteEvent {
     uint32_t end_ms;
     int16_t midi_note;
     uint8_t instrument_id;
+    uint8_t sustain_on_release;
+    uint8_t sustain_level;
 };
 
 struct Phrase {
@@ -30,6 +32,174 @@ struct Track {
     NoteEvent events[MAX_TRACK_EVENTS];
     Phrase phrases[MAX_TRACK_PHRASES];
 };
+
+struct TimelineSelection {
+    uint32_t cursor_ms;
+    uint32_t range_start_ms;
+    uint32_t range_end_ms;
+    bool explicit_range;
+};
+
+struct PulseGrid {
+    uint32_t pulse_ms;
+
+    uint32_t time(uint32_t step) const {
+        return (uint32_t)(((uint64_t)step * pulse_ms) / 4u);
+    }
+
+    uint32_t nearest_step(uint32_t value_ms) const {
+        if (pulse_ms == 0) return 0;
+        return (uint32_t)(((uint64_t)value_ms * 4u + pulse_ms / 2u) / pulse_ms);
+    }
+
+    uint32_t snap(uint32_t value_ms) const {
+        return time(nearest_step(value_ms));
+    }
+};
+
+inline uint32_t snap_note_duration(uint32_t duration_ms, uint32_t pulse_ms) {
+    if (pulse_ms == 0) return duration_ms;
+    PulseGrid grid{pulse_ms};
+    uint32_t quarter = grid.time(1);
+    if (quarter == 0) return duration_ms;
+    uint32_t snapped = grid.snap(duration_ms);
+    return snapped < quarter ? quarter : snapped;
+}
+
+inline void snap_note_events(Track& track, uint32_t pulse_ms,
+                             uint32_t range_start_ms = 0) {
+    if (pulse_ms == 0) return;
+    PulseGrid grid{pulse_ms};
+    uint32_t previous_end = range_start_ms;
+    for (uint16_t i = 0; i < track.event_count; ++i) {
+        NoteEvent& event = track.events[i];
+        uint32_t raw_duration = event.end_ms > event.start_ms
+            ? event.end_ms - event.start_ms : 1;
+        uint32_t start = grid.snap(event.start_ms);
+        uint32_t duration = snap_note_duration(raw_duration, pulse_ms);
+        if (start < previous_end) start = previous_end;
+        event.start_ms = start;
+        event.end_ms = start + duration;
+        previous_end = event.end_ms;
+    }
+}
+
+inline uint32_t clamp_time(uint32_t value, uint32_t end_ms) {
+    return value > end_ms ? end_ms : value;
+}
+
+inline void normalize_selection(TimelineSelection& selection, uint32_t song_duration_ms) {
+    selection.range_start_ms = clamp_time(selection.range_start_ms, song_duration_ms);
+    selection.range_end_ms = clamp_time(selection.range_end_ms, song_duration_ms);
+    if (selection.range_end_ms < selection.range_start_ms) {
+        uint32_t swap = selection.range_start_ms;
+        selection.range_start_ms = selection.range_end_ms;
+        selection.range_end_ms = swap;
+    }
+    if (selection.range_end_ms == selection.range_start_ms && song_duration_ms > 0) {
+        selection.range_end_ms = song_duration_ms;
+        selection.range_start_ms = 0;
+    }
+    selection.cursor_ms = clamp_time(selection.cursor_ms, song_duration_ms);
+}
+
+inline uint32_t seek_selection(TimelineSelection& selection, uint32_t cursor_ms,
+                               uint32_t song_duration_ms) {
+    selection.cursor_ms = clamp_time(cursor_ms, song_duration_ms);
+    return selection.cursor_ms;
+}
+
+inline uint32_t restart_selection(const TimelineSelection& selection) {
+    return selection.range_start_ms;
+}
+
+inline uint32_t advance_transport(uint32_t transport_ms, uint32_t delta_ms,
+                                  uint32_t range_start_ms, uint32_t range_end_ms,
+                                  bool loop_enabled, bool& stopped) {
+    stopped = false;
+    if (range_end_ms <= range_start_ms) {
+        stopped = true;
+        return range_start_ms;
+    }
+    if (transport_ms < range_start_ms) transport_ms = range_start_ms;
+    if (transport_ms > range_end_ms) transport_ms = range_end_ms;
+    uint64_t candidate = (uint64_t)transport_ms + delta_ms;
+    uint32_t span = range_end_ms - range_start_ms;
+    if (loop_enabled) {
+        return range_start_ms + (uint32_t)((candidate - range_start_ms) % span);
+    }
+    if (candidate >= range_end_ms) {
+        stopped = true;
+        return range_end_ms;
+    }
+    return (uint32_t)candidate;
+}
+
+inline uint32_t expanded_phrase_start(const Phrase& phrase, uint16_t repetition) {
+    return phrase.start_ms + phrase.duration_ms * (uint32_t)repetition;
+}
+
+inline uint32_t expanded_phrase_end(const Phrase& phrase, uint16_t repetition) {
+    return expanded_phrase_start(phrase, repetition) + phrase.duration_ms;
+}
+
+inline uint32_t snap_timeline_time(uint32_t value_ms, uint32_t pulse_ms,
+                                   const uint32_t* box_edges, uint16_t edge_count) {
+    uint32_t best_edge = value_ms;
+    uint32_t best_distance = UINT32_MAX;
+    for (uint16_t i = 0; i < edge_count; ++i) {
+        uint32_t edge = box_edges[i];
+        uint32_t distance = edge > value_ms ? edge - value_ms : value_ms - edge;
+        if (distance < best_distance) {
+            best_edge = edge;
+            best_distance = distance;
+        }
+    }
+    if (edge_count > 0 && best_distance * 8u <= pulse_ms) return best_edge;
+    return PulseGrid{pulse_ms}.snap(value_ms);
+}
+
+enum NoteEditMode : uint8_t {
+    NOTE_MOVE = 0,
+    NOTE_START = 1,
+    NOTE_END = 2
+};
+
+inline bool edit_note_event(Track& track, uint16_t index, NoteEditMode mode,
+                            uint32_t requested_ms, uint32_t range_start_ms,
+                            uint32_t range_end_ms, uint32_t pulse_ms,
+                            bool snap_to_grid = true) {
+    if (index >= track.event_count || range_end_ms <= range_start_ms) return false;
+    NoteEvent& event = track.events[index];
+    PulseGrid grid{pulse_ms};
+    uint32_t target = snap_to_grid ? grid.snap(requested_ms) : requested_ms;
+    uint32_t previous_end = index == 0 ? range_start_ms : track.events[index - 1].end_ms;
+    uint32_t next_start = index + 1 >= track.event_count ? range_end_ms : track.events[index + 1].start_ms;
+    if (previous_end > next_start) return false;
+    if (mode == NOTE_START) {
+        if (target < previous_end) target = previous_end;
+        if (target >= event.end_ms || target >= next_start) return false;
+        event.start_ms = target;
+        return true;
+    }
+    if (mode == NOTE_END) {
+        if (target <= event.start_ms) return false;
+        if (target > next_start) target = next_start;
+        if (target <= event.start_ms) return false;
+        event.end_ms = target;
+        return true;
+    }
+    uint32_t duration = event.end_ms > event.start_ms ? event.end_ms - event.start_ms : 1;
+    if (target < previous_end) target = previous_end;
+    if (target + duration > next_start) {
+        if (next_start < duration) return false;
+        target = next_start - duration;
+    }
+    if (target < range_start_ms || target + duration > range_end_ms) return false;
+    event.start_ms = target;
+    event.end_ms = target + duration;
+    return true;
+}
 
 inline uint32_t phase_ms(uint32_t elapsed_ms, uint32_t duration_ms) {
     return duration_ms == 0 ? 0 : elapsed_ms % duration_ms;
@@ -72,6 +242,10 @@ inline int wrap_track(int track, int delta) {
 
 inline bool event_active(const NoteEvent& event, uint32_t phase) {
     return event.start_ms <= phase && phase < event.end_ms;
+}
+
+inline bool should_toggle_loop_on_release(bool pending, bool direction_used, bool released) {
+    return pending && released && !direction_used;
 }
 
 } // namespace loop_logic

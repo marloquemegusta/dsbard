@@ -1,0 +1,8 @@
+{
+  "name": "touch-smoke",
+  "steps": [
+    { "action": "capture", "name": "00-inicial" },
+    { "action": "touch", "x": 12, "y": 240, "hold_ms": 120 },
+    { "action": "capture", "name": "01-tras-toque" }
+  ]
+}

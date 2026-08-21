@@ -1,0 +1,22 @@
+{
+  "name": "record-track",
+  "bindings": { "A": 65, "Start": 13 },
+  "steps": [
+    { "action": "capture", "name": "00-inicial" },
+    { "action": "button", "name": "A" },
+    { "action": "capture", "name": "01-wait" },
+    { "action": "touch", "x": 12, "y": 240 },
+    { "action": "wait", "ms": 180 },
+    { "action": "touch", "x": 96, "y": 240 },
+    { "action": "wait", "ms": 180 },
+    { "action": "touch", "x": 160, "y": 240 },
+    { "action": "button", "name": "A" },
+    { "action": "capture", "name": "02-recorte" },
+    { "action": "button", "name": "Start" },
+    { "action": "wait", "ms": 500 },
+    { "action": "capture", "name": "03-preview" },
+    { "action": "button", "name": "Start" },
+    { "action": "button", "name": "A" },
+    { "action": "capture", "name": "04-frase-aceptada" }
+  ]
+}

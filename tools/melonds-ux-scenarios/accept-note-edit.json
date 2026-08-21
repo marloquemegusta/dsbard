@@ -1,0 +1,16 @@
+{
+  "name": "accept-note-edit",
+  "bindings": { "A": 65 },
+  "steps": [
+    { "action": "wait", "ms": 1500 },
+    { "action": "button", "name": "A", "hold_ms": 300 },
+    { "action": "wait", "ms": 500 },
+    { "action": "touch", "x": 60, "y": 292, "hold_ms": 350 },
+    { "action": "wait", "ms": 250 },
+    { "action": "touch", "x": 140, "y": 292, "hold_ms": 450 },
+    { "action": "wait", "ms": 250 },
+    { "action": "button", "name": "A", "hold_ms": 300 },
+    { "action": "wait", "ms": 500 },
+    { "action": "capture", "name": "00-acceptance-original" }
+  ]
+}
