@@ -20,5 +20,11 @@ assert "consoleDebugInit(DebugDevice_NOCASH);" in main_text
 assert "trim_preview_started_ms" in main_text
 assert "trim_preview_frame_started" not in main_text
 assert "uint32_t elapsed_ms = now_ms() - trim_preview_started_ms;" in main_text
+assert "snap_loop_duration(now - record_start, pulse_ms)" in main_text
+assert "trim_start_ms = 0;" in main_text
+assert "snap_loop_boundary(trim_start_ms, pulse_ms)" in main_text
+assert "static void flush_trim_present()" in main_text
+assert "swiWaitForVBlank();\n        flush_trim_present();" in main_text
+assert "request_trim_rect_present(left, right, 35, 150);" in main_text
 print("loop_logic structural tests: OK")
 

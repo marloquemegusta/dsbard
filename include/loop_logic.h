@@ -66,6 +66,20 @@ inline uint32_t snap_note_duration(uint32_t duration_ms, uint32_t pulse_ms) {
     return snapped < quarter ? quarter : snapped;
 }
 
+// Loop boundaries use complete metronome pulses. Note events may still use
+// the finer four-step grid; only the cycle length must be phase-stable.
+inline uint32_t snap_loop_boundary(uint32_t value_ms, uint32_t pulse_ms) {
+    if (pulse_ms == 0) return value_ms;
+    return (uint32_t)(((uint64_t)value_ms + pulse_ms / 2u) / pulse_ms * pulse_ms);
+}
+
+inline uint32_t snap_loop_duration(uint32_t duration_ms, uint32_t pulse_ms) {
+    if (pulse_ms == 0) return duration_ms;
+    uint32_t beats = (duration_ms + pulse_ms - 1u) / pulse_ms;
+    if (beats == 0) beats = 1;
+    return beats * pulse_ms;
+}
+
 inline void snap_note_events(Track& track, uint32_t pulse_ms,
                              uint32_t range_start_ms = 0) {
     if (pulse_ms == 0) return;

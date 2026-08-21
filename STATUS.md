@@ -4,7 +4,7 @@
 - Cada pista contiene frases seriales. Una captura se abre con `A`, conserva el timing desde ese instante, pasa por recorte START/END y se anade al final de la pista al aceptar.
 - Cada frase puede repetirse `xN`; las copias se expanden en serie. Las tres pistas comparten un timeline global y el transporte puede repetir la cancion completa o una ventana de frases.
 - El monitor superior representa la estructura por frases: cada repeticion se dibuja como una caja independiente, no como actividad nota a nota.
-- La aceptación usa la superficie táctil completa para seleccionar bloques de notas, editar START/END o moverlos en cuartos de pulso; las capturas nuevas redondean automáticamente inicio y duración al cuarto de `PULSE`; `START` reproduce o detiene la preview; `A` acepta; `B` descarta.
+- La aceptación usa la superficie táctil completa para seleccionar bloques de notas, editar START/END o moverlos en cuartos de pulso; las capturas nuevas conservan silencios y fijan el ciclo a `N x PULSE`, mientras los límites START/END se ajustan a pulsos completos; `START` reproduce o detiene la preview; `A` acepta; `B` descarta.
 - Durante la preview de recorte, una barra verde recorre el gráfico inferior para indicar la posición dentro del rango elegido.
 - El transporte admite pausa, loop opcional y una selección temporal global para las tres pistas. `Y` solo conmuta el loop; sin loop se detiene al final y `START` reinicia la selección.
 - `Y` decide el loop al soltarse; no cambia la selección temporal. `SELECT` mantenido mueve literalmente el monitor de pistas a la pantalla táctil y deja el teclado arriba; se reutiliza la misma pantalla y las mismas cajas.

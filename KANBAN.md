@@ -66,7 +66,7 @@ Este archivo es la copia versionada del tablero. La interfaz visual es [`KANBAN.
   - **Pack C — corrección automática y manual de la captura recién grabada:**
     - Ampliar la aceptación para usar la pantalla táctil; no meter edición nota a nota en los 32 px actuales.
     - Cada `NoteEvent` es un bloque seleccionable. Ofrecer targets cómodos para moverlo, cambiar `START` y cambiar `END`, en pasos de `1/4` de pulso.
-    - Al cerrar la captura, redondear automáticamente cada inicio y duración al cuarto de pulso más cercano, con duración mínima de un cuarto; después, los bordes se pueden corregir manualmente y los eventos deben seguir sin solaparse.
+    - Al cerrar la captura, redondear automáticamente cada inicio y duración al cuarto de pulso más cercano, fijar el ciclo a `N x PULSE` y conservar silencios iniciales/finales; los bordes START/END se ajustan a pulsos completos y los eventos deben seguir sin solaparse.
     - Los silencios son huecos y no hay ripple. Impedir duración cero, salida del rango y solapamiento con notas vecinas. No modificar pitch, `instrument_id` ni `sustain_on_release`.
     - `START` alterna preview; `A` acepta; `B` descarta recuperando exactamente la captura original. Conservar repeticiones o recolocarlas en controles táctiles documentados.
     - Reutilizar `build_trim_preview`, `accept_trim` y `PulseGrid`; no crear otro formato ni motor de playback.

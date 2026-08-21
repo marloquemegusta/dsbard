@@ -87,6 +87,11 @@ int main() {
     assert(grid.time(7) == 1750);
     assert(grid.snap(1124) == 1000);
     assert(grid.snap(1126) == 1250);
+    assert(snap_loop_boundary(149, 1000) == 0);
+    assert(snap_loop_boundary(501, 1000) == 1000);
+    assert(snap_loop_duration(1, 1000) == 1000);
+    assert(snap_loop_duration(2100, 1000) == 3000);
+    assert(snap_loop_duration(3000, 1000) == 3000);
     uint32_t edges[] = {0, 1000, 2000, 3000};
     assert(snap_timeline_time(1010, 1000, edges, 4) == 1000);
     Track editable{};

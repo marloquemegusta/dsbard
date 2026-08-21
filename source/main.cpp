@@ -164,6 +164,14 @@ static int top_bitmap_bg = -1;
 static u16* top_vram = nullptr;
 static u16 top_framebuffer[256 * 256] = {};
 static u16* top_bitmap = top_framebuffer;
+static u16 trim_static_framebuffer[256 * 256] = {};
+static bool trim_editor_dirty = true;
+static int trim_playhead_x = -1;
+static bool trim_full_present_pending = false;
+static int trim_rect_left = 256;
+static int trim_rect_right = -1;
+static int trim_rect_top = 192;
+static int trim_rect_bottom = -1;
 static bool bottom_needs_redraw = true;
 static int rendered_bottom_key = -2;
 static bool rendered_bottom_playback = false;
@@ -476,28 +484,25 @@ static void build_trim_preview() {
         event.sustain_on_release = source.sustain_on_release;
         event.sustain_level = source.sustain_level;
     }
+    trim_editor_dirty = true;
+    trim_playhead_x = -1;
 }
 
 static void stop_recording(uint32_t now) {
     close_open_note(now - record_start, sustain_active ? sustain_release_level : 0);
     recording_track.event_count = record_count;
     loop_logic::snap_note_events(recording_track, pulse_ms);
-    recording_track.duration_ms = now - record_start;
+    recording_track.duration_ms = loop_logic::snap_loop_duration(now - record_start, pulse_ms);
     if (recording_track.duration_ms == 0) recording_track.duration_ms = 1;
     recording = false;
     recording_armed = false;
     recording_target = nullptr;
     if (record_count == 0) return;
-    trim_start_ms = UINT32_MAX;
-    trim_end_ms = 0;
-    for (uint16_t i = 0; i < record_count; ++i) {
-        if (recording_track.events[i].start_ms < trim_start_ms)
-            trim_start_ms = recording_track.events[i].start_ms;
-        if (recording_track.events[i].end_ms > trim_end_ms)
-            trim_end_ms = recording_track.events[i].end_ms;
-    }
+    // Keep the complete capture as the phrase range. Its boundaries are the
+    // stable beat grid, including intentional leading/trailing silence.
+    trim_start_ms = 0;
+    trim_end_ms = recording_track.duration_ms;
     trim_raw_duration_ms = recording_track.duration_ms;
-    if (trim_end_ms <= trim_start_ms) trim_end_ms = trim_start_ms + MIN_LOOP_MS;
     trim_repeat_count = 1;
     trim_selected_event = -1;
     trim_touch_editing = false;
@@ -1257,6 +1262,48 @@ static void present_bottom_full() {
     dmaCopy(bottom_framebuffer, bottom_vram, 256 * 192 * sizeof(u16));
 }
 
+static void copy_bottom_rect_now(int left, int right, int top, int bottom) {
+    if (left < 0) left = 0;
+    if (right > 255) right = 255;
+    if (top < 0) top = 0;
+    if (bottom > 191) bottom = 191;
+    if (left > right || top > bottom) return;
+    for (int y = top; y <= bottom; ++y) {
+        dmaCopy(&bottom_framebuffer[y * 256 + left],
+                &bottom_vram[y * 256 + left],
+                (right - left + 1) * sizeof(u16));
+    }
+}
+
+static void request_trim_full_present() {
+    trim_full_present_pending = true;
+    trim_rect_left = 256;
+    trim_rect_right = -1;
+    trim_rect_top = 192;
+    trim_rect_bottom = -1;
+}
+
+static void request_trim_rect_present(int left, int right, int top, int bottom) {
+    if (trim_full_present_pending) return;
+    if (left < trim_rect_left) trim_rect_left = left;
+    if (right > trim_rect_right) trim_rect_right = right;
+    if (top < trim_rect_top) trim_rect_top = top;
+    if (bottom > trim_rect_bottom) trim_rect_bottom = bottom;
+}
+
+static void flush_trim_present() {
+    if (trim_full_present_pending) {
+        present_bottom_full();
+        trim_full_present_pending = false;
+    } else if (trim_rect_left <= trim_rect_right && trim_rect_top <= trim_rect_bottom) {
+        copy_bottom_rect_now(trim_rect_left, trim_rect_right, trim_rect_top, trim_rect_bottom);
+    }
+    trim_rect_left = 256;
+    trim_rect_right = -1;
+    trim_rect_top = 192;
+    trim_rect_bottom = -1;
+}
+
 static void present_bottom_band(int index) {
     if (index < 0 || index >= KEY_COUNT) return;
     int left = (index * 256) / KEY_COUNT;
@@ -1391,7 +1438,7 @@ static void draw_bottom_full(int key, bool playback) {
     rendered_sustain_release_level = sustain_release_level;
     rendered_sustain_active = sustain_active;
     bottom_needs_redraw = false;
-    present_bottom_full();
+    request_trim_full_present();
 }
 
 static void draw_trim_editor() {
@@ -1439,10 +1486,13 @@ static void draw_trim_editor() {
     fill_rect(bottom_bitmap, end_x, 40, end_x, 145, green);
     draw_text_bitmap(bottom_bitmap, start_x < 4 ? 4 : start_x - 2, 43, "S", green, 1);
     draw_text_bitmap(bottom_bitmap, end_x < 4 ? 4 : end_x - 2, 43, "E", green, 1);
+    memcpy(trim_static_framebuffer, bottom_framebuffer, 256 * 192 * sizeof(u16));
+    trim_playhead_x = -1;
     if (trim_preview_playing && trim_preview_track.duration_ms > 0) {
         uint32_t phase = trim_preview_phase_ms();
         int playhead_x = timeline_x_for_ms(trim_start_ms + phase, trim_raw_duration_ms);
         fill_rect(bottom_bitmap, playhead_x - 1, 35, playhead_x + 1, 150, green);
+        trim_playhead_x = playhead_x;
     }
     draw_text_bitmap(bottom_bitmap, 8, 151, "START PREVIEW", text, 1);
     draw_text_bitmap(bottom_bitmap, 94, 151, "A ACCEPT", green, 1);
@@ -1451,12 +1501,34 @@ static void draw_trim_editor() {
     snprintf(repeat_text, sizeof(repeat_text), "REPEAT %u", (unsigned)trim_repeat_count);
     draw_text_bitmap(bottom_bitmap, 8, 181, repeat_text, text, 1);
     draw_text_bitmap(bottom_bitmap, 182, 181, "L SUS", green, 1);
+    trim_editor_dirty = false;
     present_bottom_full();
+}
+
+static void update_trim_playhead() {
+    if (!trim_preview_playing || trim_preview_track.duration_ms == 0) return;
+    const u16 green = BIT(15) | RGB15(20, 31, 22);
+    uint32_t phase = trim_preview_phase_ms();
+    int next_x = timeline_x_for_ms(trim_start_ms + phase, trim_raw_duration_ms);
+    if (next_x == trim_playhead_x) return;
+    int left = (trim_playhead_x < 0 ? next_x : (trim_playhead_x < next_x ? trim_playhead_x : next_x)) - 1;
+    int right = (trim_playhead_x < next_x ? next_x : trim_playhead_x) + 1;
+    if (trim_playhead_x >= 0) {
+        for (int y = 35; y <= 150; ++y)
+            for (int x = trim_playhead_x - 1; x <= trim_playhead_x + 1; ++x)
+                if (x >= 0 && x < 256) bottom_framebuffer[y * 256 + x] = trim_static_framebuffer[y * 256 + x];
+    }
+    for (int y = 35; y <= 150; ++y)
+        for (int x = next_x - 1; x <= next_x + 1; ++x)
+            if (x >= 0 && x < 256) bottom_framebuffer[y * 256 + x] = green;
+    trim_playhead_x = next_x;
+    request_trim_rect_present(left, right, 35, 150);
 }
 
 static void draw_bottom(int key) {
     if (trim_active) {
-        draw_trim_editor();
+        if (trim_editor_dirty) draw_trim_editor();
+        else update_trim_playhead();
         return;
     }
     if (focus_timeline) {
@@ -1510,6 +1582,7 @@ int main() {
     while (pmMainLoop()) {
 #endif
         swiWaitForVBlank();
+        flush_trim_present();
         scanKeys();
         advance_master_clock();
         uint32_t now = now_ms();
@@ -1573,6 +1646,7 @@ int main() {
                 reset_trim_preview_audio();
                 trim_preview_playing = !trim_preview_playing;
                 trim_preview_started_ms = now_ms();
+                trim_editor_dirty = true;
             } else {
                 if (paused && transport_finished) {
                     uint32_t window_start = 0;
@@ -1741,6 +1815,16 @@ int main() {
                 }
             }
             if (!(held & KEY_TOUCH)) {
+                if (trim_drag_handle != 0) {
+                    trim_start_ms = loop_logic::snap_loop_boundary(trim_start_ms, pulse_ms);
+                    trim_end_ms = loop_logic::snap_loop_boundary(trim_end_ms, pulse_ms);
+                    if (trim_start_ms >= trim_raw_duration_ms)
+                        trim_start_ms = trim_raw_duration_ms > pulse_ms ? trim_raw_duration_ms - pulse_ms : 0;
+                    if (trim_end_ms <= trim_start_ms)
+                        trim_end_ms = trim_start_ms + pulse_ms;
+                    if (trim_end_ms > trim_raw_duration_ms) trim_end_ms = trim_raw_duration_ms;
+                    build_trim_preview();
+                }
                 if (trim_touch_editing && trim_touch_free_changed && trim_selected_event >= 0) {
                     NoteEvent& event = recording_track.events[trim_selected_event];
                     uint32_t value = trim_edit_mode == loop_logic::NOTE_END

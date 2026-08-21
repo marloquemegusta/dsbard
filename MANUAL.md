@@ -58,7 +58,7 @@ No existe una pista master. Cualquier pista puede ser la primera en grabarse.
 9. Pulsa `START` para reproducir o detener la preview. Pulsa `A` para reemplazar la frase editada; sus repeticiones conservan el mismo contenido actualizado. Pulsa `B` para cancelar y volver al selector sin modificarla.
 10. Pulsa `B` otra vez en el selector para cerrarlo. Las frases posteriores se recolocan si la duración de la frase editada ha cambiado.
 
- El recorte desplaza el origen temporal y fija la duracion de la frase. Al cerrar la grabacion, cada inicio y duracion se redondea al cuarto de pulso mas cercano usando `PULSE`; la duracion minima es un cuarto. Los silencios iniciales o finales se conservan solo si quedan dentro del rango elegido.
+El recorte fija la duracion de la frase en pulsos completos: al cerrar la grabacion, el ciclo se redondea hacia arriba a `N x PULSE` y conserva los silencios iniciales o finales. Los inicios y duraciones de las notas se redondean al cuarto de pulso; los tiradores `START` y `END` se ajustan a pulsos completos para que las repeticiones no deriven.
 
 Una repetición no crea un loop independiente: `x20` coloca veinte copias consecutivas de la misma frase en la pista. El selector edita la fuente y actualiza todas sus repeticiones.
 
