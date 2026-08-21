@@ -127,6 +127,11 @@ int main() {
     assert(pending.event.midi_note == 640);
     assert(pending.event.instrument_id == 3);
 
+    PendingNoteInsertion at_cycle_end{};
+    begin_note_insertion(at_cycle_end, 65, 3, 2000, 1000, 0, 2000);
+    assert(at_cycle_end.event.start_ms == 1750);
+    assert(at_cycle_end.event.end_ms == 2000);
+
     Track composed{};
     composed.occupied = true;
     composed.duration_ms = 2000;
@@ -163,6 +168,12 @@ int main() {
     mixed.events[2] = {2100, 2300, 62, 3, 0, 0};
     assert(find_direct_event_at(mixed, 1300) == 1);
     assert(find_direct_event_at(mixed, 200) == -1);
+
+    PendingNoteInsertion inside_phrase{};
+    begin_note_insertion(inside_phrase, 63, 6, 500, 1000, 0, mixed.duration_ms);
+    assert(!commit_note_insertion(mixed, inside_phrase));
+    assert(inside_phrase.active);
+    assert(mixed.event_count == 3);
 
     Track rebuilt{};
     Track edited_phrase{};

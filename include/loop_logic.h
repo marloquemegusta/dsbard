@@ -88,11 +88,22 @@ struct PendingNoteInsertion {
 
 inline void begin_note_insertion(PendingNoteInsertion& pending, int16_t midi_note,
                                  uint8_t instrument_id, uint32_t requested_ms,
-                                 uint32_t pulse_ms, uint32_t range_start_ms = 0) {
+                                 uint32_t pulse_ms, uint32_t range_start_ms = 0,
+                                 uint32_t range_end_ms = UINT32_MAX) {
     PulseGrid grid{pulse_ms};
     uint32_t start = pulse_ms == 0 ? requested_ms : grid.snap(requested_ms);
     if (start < range_start_ms) start = range_start_ms;
     uint32_t duration = pulse_ms == 0 ? 1 : snap_note_duration(grid.time(1), pulse_ms);
+    if (range_end_ms != UINT32_MAX) {
+        if (range_end_ms <= range_start_ms) {
+            pending = {};
+            return;
+        }
+        uint32_t available = range_end_ms - range_start_ms;
+        if (duration > available) duration = available;
+        uint32_t latest_start = range_end_ms - duration;
+        if (start > latest_start) start = latest_start;
+    }
     pending.event = {start, start + duration, midi_note, instrument_id, 0, 0};
     pending.active = true;
 }
@@ -109,6 +120,14 @@ inline bool commit_note_insertion(Track& track, PendingNoteInsertion& pending) {
         if (pending.event.start_ms < current.end_ms && current.start_ms < pending.event.end_ms)
             return false;
     }
+    for (uint8_t p = 0; p < track.phrase_count; ++p)
+        for (uint16_t repetition = 0; repetition < track.phrases[p].repeat_count; ++repetition) {
+            uint32_t phrase_start = track.phrases[p].start_ms +
+                track.phrases[p].duration_ms * (uint32_t)repetition;
+            uint32_t phrase_end = phrase_start + track.phrases[p].duration_ms;
+            if (pending.event.start_ms < phrase_end && phrase_start < pending.event.end_ms)
+                return false;
+        }
     uint16_t insert_at = 0;
     while (insert_at < track.event_count &&
            track.events[insert_at].start_ms < pending.event.start_ms) ++insert_at;

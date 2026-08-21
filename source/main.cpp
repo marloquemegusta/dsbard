@@ -793,8 +793,8 @@ static void start_note_insertion(uint32_t requested_ms) {
     uint32_t cycle_end = song_duration_ms();
     if (cycle_end == 0) cycle_end = pulse_ms;
     loop_logic::begin_note_insertion(note_insert_pending, (int16_t)preview_note_midi,
-                                      preview_note_instrument, requested_ms, pulse_ms);
-    if (note_insert_pending.event.end_ms > cycle_end) cycle_end = note_insert_pending.event.end_ms;
+                                      preview_note_instrument, requested_ms, pulse_ms,
+                                      0, cycle_end);
     recording_slot = selected_track;
     recording_track = {};
     recording_track.occupied = true;
