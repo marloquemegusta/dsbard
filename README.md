@@ -4,6 +4,22 @@ Instrumento homebrew para Nintendo DS/DSi: 12 franjas cromáticas táctiles nume
 
 La ROM incluye seis timbres PCM multisampleados (`RHODES`, `KALIMBA`, `BASS`, `PLUCK`, `GLASS`, `PAD`) y cuatro timbres PSG de referencia (`SQUARE`, `PULSE`, `THIN`, `DARK`). Cada nota grabada conserva su `instrument_id`, así que los cuatro tracks pueden reproducir timbres distintos mientras la voz live usa el timbre actual. El origen y formato PCM están en [SAMPLES.md](SAMPLES.md).
 
+## Contexto de recuperación
+
+Este repositorio está en un **punto intermedio de reconstrucción**, no es una recuperación exacta de la fuente original. La carpeta local donde se había desarrollado la versión más avanzada se borró accidentalmente desde la terminal y no pudo recuperarse desde la papelera. La copia de OneDrive disponible era anterior y no contenía todos los cambios recientes.
+
+La ROM que estaba instalada en la Nintendo DS sí se conservó. Se extrajo y se guarda como referencia funcional y visual en [`recovered/ds-stylophone-from-ds.nds`](recovered/ds-stylophone-from-ds.nds). Esa es la ROM buena conocida: sirve para comparar interfaz, comportamiento y, cuando sea posible, instrumentos, pero una ROM compilada no sustituye al código fuente perdido.
+
+El estado que se mantiene en `main` intenta acercarse a esa ROM buena a partir de la copia de seguridad antigua, la ROM extraída de la DS, las conversaciones de desarrollo y los artefactos de pruebas recuperados. La ROM que se construye actualmente es [`ds-stylophone.nds`](ds-stylophone.nds); representa el estado actual de la reconstrucción y **no debe considerarse idéntica todavía** a la ROM original. El trabajo futuro debe continuar desde este punto comparando ambas ROMs y validando especialmente la interfaz y el comportamiento en hardware.
+
+Referencias binarias actuales:
+
+- ROM buena extraída de la DS: `recovered/ds-stylophone-from-ds.nds` — SHA-256 `e826ecde2da3a1413d874ae39772d1d6389f7311f1ebc95a79f447d6b14d30b7`.
+- ROM actual reconstruida y canónica del repositorio: `ds-stylophone.nds` — SHA-256 `7235d5b6c32ce794f386144fa1e296122ee575522fe1df2572a7740666db669d`.
+- `recovered/ftp-verify.nds` es una copia de verificación de una transferencia anterior; no es la fuente de verdad.
+
+Mientras continúe la reconstrucción, no se debe sobrescribir la ROM de referencia de `recovered/` ni asumir que un build verde demuestra equivalencia con la versión perdida. `main` es deliberadamente la base versionada desde la que retomar ese esfuerzo.
+
 ## Compilar
 
 El único build canónico usa BlocksDS dentro de Docker:
