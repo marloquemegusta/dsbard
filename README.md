@@ -1,8 +1,8 @@
 # DS Stylophone / Looper
 
-Instrumento homebrew para Nintendo DS/DSi: 12 franjas cromáticas táctiles numeradas `0`–`11`, tres loops independientes de eventos musicales y un diario temporal. No guarda datos entre sesiones.
+Instrumento homebrew para Nintendo DS/DSi: 12 franjas cromáticas táctiles numeradas `0`–`11`, cuatro loops independientes de eventos musicales y un diario temporal. Al iniciar permite continuar un tema guardado, crear uno nuevo o elegirlo desde una biblioteca de hasta 16 temas; los cambios se guardan automáticamente.
 
-La ROM incluye seis timbres PCM multisampleados (`RHODES`, `KALIMBA`, `BASS`, `PLUCK`, `GLASS`, `PAD`) y cuatro timbres PSG de referencia (`SQUARE`, `PULSE`, `THIN`, `DARK`). Cada nota grabada conserva su `instrument_id`, así que los tres tracks pueden reproducir timbres distintos mientras la voz live usa el timbre actual. El origen y formato PCM están en [SAMPLES.md](SAMPLES.md).
+La ROM incluye seis timbres PCM multisampleados (`RHODES`, `KALIMBA`, `BASS`, `PLUCK`, `GLASS`, `PAD`) y cuatro timbres PSG de referencia (`SQUARE`, `PULSE`, `THIN`, `DARK`). Cada nota grabada conserva su `instrument_id`, así que los cuatro tracks pueden reproducir timbres distintos mientras la voz live usa el timbre actual. El origen y formato PCM están en [SAMPLES.md](SAMPLES.md).
 
 ## Compilar
 
@@ -36,7 +36,7 @@ La franja inferior muestra los controles compactos `PULSE`, vibrato y sustain en
 
 - Touchscreen: tocar y arrastrar las franjas numéricas `0`–`11`.
 - D-pad arriba/abajo: octava 2–6.
-- D-pad izquierda/derecha: seleccionar Track 1–3.
+- D-pad izquierda/derecha: seleccionar Track 1–4.
 - A: grabar/detener grabación de la pista seleccionada.
 - B corto: borrar el último token del diario; B mantenido: limpiar el diario.
 - Y: activar/desactivar loop; el loop respeta la selección temporal actual o toda la canción si no hay selección.
@@ -44,5 +44,6 @@ La franja inferior muestra los controles compactos `PULSE`, vibrato y sustain en
 - START: pausar/reanudar; con loop desactivado, el transporte se detiene al final y vuelve a arrancar desde la ventana al pulsar START.
 - SELECT corto: mute/unmute de la pista; SELECT mantenido: abrir/cerrar el selector de frases.
 - X: cambiar timbre (`RHODES` → `KALIMBA` → `BASS` → `PLUCK` → `GLASS` → `PAD` → `SQUARE` → `PULSE` → `THIN` → `DARK`); L sustain; en aceptación, L corto alterna el sustain de la nota seleccionada; franja inferior PULSE/VIB/SUS para configurar pulso y efectos.
+- Inicio: `CONTINUE` abre el último tema disponible, `NEW` crea uno nuevo y `SONGS` muestra la biblioteca. Los nombres se dibujan con el stylus y se guardan junto al tema.
 
 El diario transcribe literalmente las franjas pulsadas como valores `0`–`11`. No tiene en cuenta octava, MIDI ni frecuencia. Muestra los tokens más recientes y no registra las notas producidas por los loops. La interfaz no muestra nombres de notas: el audio conserva internamente la representación MIDI.

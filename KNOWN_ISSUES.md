@@ -5,4 +5,3 @@ Este archivo contiene solo problemas o validaciones abiertas. Cuando una entrada
 ## Validación auditiva y hardware
 
 - Queda pendiente una verificación auditiva formal y una validación física en DSi XL. Las pruebas host, melonDS y NO$GBA no sustituyen esas dos comprobaciones.
-

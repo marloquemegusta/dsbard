@@ -6,8 +6,8 @@ int main() {
     assert(phase_ms(0, 1000) == 0);
     assert(phase_ms(1250, 1000) == 250);
     assert(phase_ms(50, 0) == 0);
-    assert(wrap_track(0, -1) == 2);
-    assert(wrap_track(2, 1) == 0);
+    assert(wrap_track(0, -1) == 3);
+    assert(wrap_track(3, 1) == 0);
     NoteEvent event{100, 200, 60, 0, 1};
     assert(!event_active(event, 99));
     assert(event_active(event, 100));
@@ -87,6 +87,10 @@ int main() {
     assert(grid.time(7) == 1750);
     assert(grid.snap(1124) == 1000);
     assert(grid.snap(1126) == 1250);
+    assert(pulse_grid_line_kind(0, 4) == GRID_BAR);
+    assert(pulse_grid_line_kind(1, 4) == GRID_SUBDIVISION);
+    assert(pulse_grid_line_kind(4, 4) == GRID_BEAT);
+    assert(pulse_grid_line_kind(12, 3) == GRID_BAR);
     assert(snap_loop_boundary(149, 1000) == 0);
     assert(snap_loop_boundary(501, 1000) == 1000);
     assert(snap_loop_duration(1, 1000) == 1000);
@@ -155,6 +159,17 @@ int main() {
     assert(!timeline_x_is_valid(252));
     assert(timeline_ms_for_x(91, 2000) == 0);
     assert(timeline_ms_for_x(251, 2000) == 2000);
+    assert(pitch_window_low_midi(4) == 60);
+    assert(clamp_pitch_window_low(-5) == 0);
+    assert(clamp_pitch_window_low(120) == 103);
+    assert(pitch_lane_y(60, 39, pitch_window_low_midi(4)) == 66);
+    assert(pitch_lane_y(71, 39, pitch_window_low_midi(4)) == 55);
+    assert(pitch_lane_y(72, 39, pitch_window_low_midi(4)) == 54);
+    assert(pitch_lane_y(83, 39, pitch_window_low_midi(4)) == 43);
+    assert(pitch_lane_y(63, 39, pitch_window_low_midi(4)) <
+           pitch_lane_y(60, 39, pitch_window_low_midi(4)));
+    assert(pitch_lane_hit_y(41, 39));
+    assert(!pitch_lane_hit_y(68, 39));
 
     Track mixed{};
     mixed.occupied = true;
@@ -226,5 +241,26 @@ int main() {
     Track full{};
     full.event_count = MAX_TRACK_EVENTS;
     assert(!commit_note_insertion(full, overlapping));
+    assert(adjust_note_pitch(editable.events[0], 2));
+    assert(editable.events[0].midi_note == 62);
+    editable.events[0].midi_note = 127;
+    assert(!adjust_note_pitch(editable.events[0], 1));
+    assert(adjust_composer_view(COMPOSER_VIEW_MS, 1) == COMPOSER_VIEW_MS + COMPOSER_VIEW_STEP_MS);
+    assert(adjust_composer_view(COMPOSER_MIN_VIEW_MS, -1) == COMPOSER_MIN_VIEW_MS);
+    assert(composer_time_for_x(COMPOSER_TIMELINE_LEFT_X, 1000, 5000) == 1000);
+    assert(composer_time_for_x(COMPOSER_TIMELINE_RIGHT_X, 1000, 5000) == 6000);
+    assert(composer_x_for_time(1000, 1000, 5000) == COMPOSER_TIMELINE_LEFT_X);
+    assert(composer_x_for_time(6000, 1000, 5000) == COMPOSER_TIMELINE_RIGHT_X);
+    Track removable{};
+    removable.occupied = true;
+    removable.event_count = 2;
+    removable.events[0] = {0, 250, 60, 0, 0, 0};
+    removable.events[1] = {500, 1000, 62, 0, 0, 0};
+    removable.duration_ms = 1000;
+    assert(delete_note_event(removable, 0));
+    assert(removable.event_count == 1 && removable.events[0].midi_note == 62);
+    assert(removable.duration_ms == 1000 && removable.occupied);
+    assert(delete_note_event(removable, 0));
+    assert(removable.event_count == 0 && !removable.occupied && removable.duration_ms == 0);
     return 0;
 }

@@ -1,0 +1,13 @@
+***************
+*** 998,1005 ****
+              }
+-             if (right - left < loop_logic::NARROW_NOTE_PIXEL_WIDTH) {
+-                 const u16 narrow_note_accent = BIT(15) | RGB15(31, 31, 20);
+-                 int center_x = (left + right) / 2;
+-                 for (int note_y = y + 20; note_y <= y + 26; ++note_y)
+-                     target[note_y * 256 + center_x] = narrow_note_accent;
+-             }
+              if (right - left >= 14) {
+--- 998,999 ----
+              }
+              if (right - left >= 14) {

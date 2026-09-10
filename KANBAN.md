@@ -44,15 +44,15 @@ Este archivo es la copia versionada del tablero. La interfaz visual es [`KANBAN.
   - El experimento de la rama `codex/note-composer-redesign` no consiguió expresar el rediseño en la ROM y queda abandonado. No continuar ni fusionar sus commits.
   - La intención recuperable y el nuevo ticket están documentados en [`docs/note-composer-redesign-brief.md`](docs/note-composer-redesign-brief.md).
 
-- **K-012 — Rediseño: compositor por descubrimiento de notas** [feature, ux, looper, composición] — **Todo**
+- **K-012 — Rediseño: compositor por descubrimiento de notas** [feature, ux, looper, composición] — **Revisión**
   - Historia de usuario: al escuchar una canción, quiero probar notas en el teclado y colocarlas directamente en una línea temporal por pista, para construir una base y capas sin tener que tocar una frase perfecta a tempo.
   - Criterio inicial: pantalla de compositor visible, teclado como preescucha, notas individuales movibles y estirables, tres pistas con reloj global, sin flujo obligatorio de captura/aceptación de frases.
   - Alcance, restricciones, escenario de 20 segundos y criterios completos: [`docs/note-composer-redesign-brief.md`](docs/note-composer-redesign-brief.md).
   - **Fricción observada:** la frase mezcla captura, repetición, edición y sincronización; para descubrir una melodía el usuario tiene que interpretar a tempo y corregir después.
   - **Objetivo de esta exploración:** probar una composición basada en `NoteEvent` individuales, con teclado como preescucha y timeline como lugar de inserción/edición, reutilizando el reloj, el audio, las tres pistas y la superficie táctil existentes.
   - **Primera ronda:** implementar el candidato mínimo que permita preescuchar una nota, colocarla en una pista, moverla, ajustar su duración, reproducir el ciclo global y cancelar una inserción sin residuo. Mantener `Phrase` para compatibilidad mientras no exista una migración validada.
-  - **Fuera de alcance inicial:** eliminar todo el almacenamiento de frases, polifonía, zoom, persistencia, overdub, cuantización avanzada y validación física.
-   - **Decisión experimental R1:** `A` confirma y `B` cancela una inserción provisional para mantener una salida segura; la siguiente revisión debe intentar eliminar esa confirmación mediante una prueba de gesto directo.
+  - **Fuera de alcance inicial:** eliminar todo el almacenamiento de frases, polifonía, overdub, cuantización avanzada y validación física.
+  - **Entrega recuperada:** viewport temporal, selección directa, nudge con snap al soltar, cambio de pitch, borrado, detalle y persistencia atómica sobre las cuatro pistas.
   - **Terminado de la exploración:** una traza de usuario virtual completa, tests host de inserción/edición/reproducción y una decisión documentada de aceptar, corregir o descartar el candidato. Mover a `Revisión` solo tras verificar la ronda.
 
 - **K-010 — Timeline táctil, metrónomo y corrección rítmica mínima** [feature, ux, looper, ritmo, grabación] — **En curso**

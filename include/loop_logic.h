@@ -22,6 +22,10 @@ struct Phrase {
 
 static constexpr uint16_t MAX_TRACK_EVENTS = 96;
 static constexpr uint8_t MAX_TRACK_PHRASES = 16;
+static constexpr uint32_t COMPOSER_VIEW_MS = 5000;
+static constexpr uint32_t COMPOSER_MIN_VIEW_MS = 2500;
+static constexpr uint32_t COMPOSER_MAX_VIEW_MS = 10000;
+static constexpr uint32_t COMPOSER_VIEW_STEP_MS = 2500;
 
 struct Track {
     bool occupied;
@@ -57,8 +61,81 @@ struct PulseGrid {
     }
 };
 
+enum PulseGridLineKind : uint8_t {
+    GRID_SUBDIVISION = 0,
+    GRID_BEAT = 1,
+    GRID_BAR = 2
+};
+
+inline PulseGridLineKind pulse_grid_line_kind(uint32_t step, uint8_t beats_per_bar) {
+    if (beats_per_bar == 0) beats_per_bar = 4;
+    if (step % (uint32_t)(beats_per_bar * 4u) == 0) return GRID_BAR;
+    if (step % 4u == 0) return GRID_BEAT;
+    return GRID_SUBDIVISION;
+}
+
 static constexpr int TIMELINE_LEFT_X = 91;
 static constexpr int TIMELINE_RIGHT_X = 251;
+static constexpr int COMPOSER_TIMELINE_LEFT_X = 48;
+static constexpr int COMPOSER_TIMELINE_RIGHT_X = 251;
+static constexpr int COMPOSER_MIN_NOTE_PIXEL_WIDTH = 4;
+static constexpr int PITCH_WINDOW_SEMITONES = 24;
+static constexpr int PITCH_LANE_TOP_OFFSET = 2;
+static constexpr int PITCH_LANE_BOTTOM_OFFSET = 27;
+static constexpr int NOTE_VISUAL_HALF_HEIGHT = 3;
+
+inline int pitch_window_low_midi(int selected_octave) {
+    int low = 12 * (selected_octave + 1);
+    if (low < 0) low = 0;
+    if (low > 127 - PITCH_WINDOW_SEMITONES)
+        low = 127 - PITCH_WINDOW_SEMITONES;
+    return low;
+}
+
+inline int clamp_pitch_window_low(int low_midi) {
+    if (low_midi < 0) return 0;
+    int maximum = 127 - PITCH_WINDOW_SEMITONES;
+    return low_midi > maximum ? maximum : low_midi;
+}
+
+inline int pitch_lane_y(int midi_note, int track_top, int window_low_midi) {
+    int semitone = midi_note - window_low_midi;
+    if (semitone < 0) semitone = 0;
+    if (semitone >= PITCH_WINDOW_SEMITONES)
+        semitone = PITCH_WINDOW_SEMITONES - 1;
+    int octave = semitone / 12;
+    int pitch_class = semitone % 12;
+    int slot = pitch_class / 2;
+    int offset = pitch_class % 2;
+    return track_top + PITCH_LANE_BOTTOM_OFFSET - octave * 12 - slot * 2 - offset;
+}
+
+inline bool pitch_lane_hit_y(int y, int track_top) {
+    return y >= track_top + PITCH_LANE_TOP_OFFSET &&
+           y <= track_top + PITCH_LANE_BOTTOM_OFFSET;
+}
+
+inline void ensure_note_visual_width(int& left, int& right,
+                                     int timeline_left, int timeline_right) {
+    if (right <= left) right = left + 1;
+    if (right - left >= COMPOSER_MIN_NOTE_PIXEL_WIDTH) return;
+    int center = (left + right) / 2;
+    left = center - COMPOSER_MIN_NOTE_PIXEL_WIDTH / 2;
+    right = left + COMPOSER_MIN_NOTE_PIXEL_WIDTH;
+    if (left < timeline_left) {
+        left = timeline_left;
+        right = left + COMPOSER_MIN_NOTE_PIXEL_WIDTH;
+    }
+    if (right > timeline_right) {
+        right = timeline_right;
+        left = right - COMPOSER_MIN_NOTE_PIXEL_WIDTH;
+    }
+}
+
+inline int centered_note_label_x(int left, int right, int pitch) {
+    return (pitch % 12) >= 10 ? left + ((right - left) - 7) / 2 + 1
+                              : left + ((right - left) - 3) / 2;
+}
 
 inline bool timeline_x_is_valid(int x) {
     return x >= TIMELINE_LEFT_X && x <= TIMELINE_RIGHT_X;
@@ -459,8 +536,74 @@ inline uint16_t psg_frequency_for_midi(int midi) {
 }
 
 inline int wrap_track(int track, int delta) {
-    int value = (track + delta) % 3;
-    return value < 0 ? value + 3 : value;
+    int value = (track + delta) % 4;
+    return value < 0 ? value + 4 : value;
+}
+
+inline bool delete_note_event(Track& track, uint16_t index) {
+    if (index >= track.event_count) return false;
+    for (uint16_t i = index; i + 1 < track.event_count; ++i)
+        track.events[i] = track.events[i + 1];
+    --track.event_count;
+    track.duration_ms = 0;
+    for (uint16_t i = 0; i < track.event_count; ++i)
+        if (track.events[i].end_ms > track.duration_ms)
+            track.duration_ms = track.events[i].end_ms;
+    if (track.event_count == 0) {
+        track.occupied = false;
+        track.duration_ms = 0;
+    } else {
+        track.occupied = true;
+    }
+    return true;
+}
+
+inline uint32_t composer_time_for_x(int x, uint32_t viewport_start_ms,
+                                    uint32_t viewport_ms) {
+    if (x < COMPOSER_TIMELINE_LEFT_X) x = COMPOSER_TIMELINE_LEFT_X;
+    if (x > COMPOSER_TIMELINE_RIGHT_X) x = COMPOSER_TIMELINE_RIGHT_X;
+    if (viewport_ms == 0) return viewport_start_ms;
+    return viewport_start_ms + (uint32_t)(((uint64_t)(x - COMPOSER_TIMELINE_LEFT_X) * viewport_ms) /
+                                          (COMPOSER_TIMELINE_RIGHT_X - COMPOSER_TIMELINE_LEFT_X));
+}
+
+inline int composer_x_for_time(uint32_t time_ms, uint32_t viewport_start_ms,
+                               uint32_t viewport_ms) {
+    if (viewport_ms == 0 || time_ms <= viewport_start_ms) return COMPOSER_TIMELINE_LEFT_X;
+    uint32_t end = viewport_start_ms + viewport_ms;
+    if (time_ms >= end) return COMPOSER_TIMELINE_RIGHT_X;
+    return COMPOSER_TIMELINE_LEFT_X + (int)(((uint64_t)(time_ms - viewport_start_ms) *
+                                              (COMPOSER_TIMELINE_RIGHT_X - COMPOSER_TIMELINE_LEFT_X)) /
+                                             viewport_ms);
+}
+
+inline uint32_t clamp_composer_view(uint32_t value_ms) {
+    if (value_ms < COMPOSER_MIN_VIEW_MS) return COMPOSER_MIN_VIEW_MS;
+    if (value_ms > COMPOSER_MAX_VIEW_MS) return COMPOSER_MAX_VIEW_MS;
+    return value_ms;
+}
+
+inline uint32_t adjust_composer_view(uint32_t value_ms, int direction) {
+    value_ms = clamp_composer_view(value_ms);
+    if (direction > 0 && value_ms + COMPOSER_VIEW_STEP_MS <= COMPOSER_MAX_VIEW_MS)
+        return value_ms + COMPOSER_VIEW_STEP_MS;
+    if (direction < 0 && value_ms >= COMPOSER_MIN_VIEW_MS + COMPOSER_VIEW_STEP_MS)
+        return value_ms - COMPOSER_VIEW_STEP_MS;
+    return value_ms;
+}
+
+inline uint32_t clamp_composer_start(uint32_t start_ms, uint32_t content_ms,
+                                     uint32_t viewport_ms) {
+    if (content_ms <= viewport_ms) return 0;
+    uint32_t maximum = content_ms - viewport_ms;
+    return start_ms > maximum ? maximum : start_ms;
+}
+
+inline bool adjust_note_pitch(NoteEvent& event, int delta) {
+    int next = (int)event.midi_note + delta;
+    if (next < 0 || next > 127) return false;
+    event.midi_note = (int16_t)next;
+    return true;
 }
 
 inline bool event_active(const NoteEvent& event, uint32_t phase) {

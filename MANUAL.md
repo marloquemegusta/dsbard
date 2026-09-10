@@ -2,16 +2,16 @@
 
 ## 1. Que es el juego
 
-DS Stylophone / Looper es un instrumento musical para Nintendo DS y DSi. La pantalla tactil funciona como un teclado cromatico de 12 franjas numeradas. Los botones permiten cambiar de octava, elegir timbre y construir una cancion con hasta tres pistas.
+DS Stylophone / Looper es un instrumento musical para Nintendo DS y DSi. La pantalla tactil funciona como un teclado cromatico de 12 franjas numeradas. Los botones permiten cambiar de octava, elegir timbre y construir una cancion con hasta cuatro pistas.
 
 ## 2. Pantalla y conceptos principales
 
 - **Franjas tactiles `0`-`11`**: producen notas cromaticas y siempre muestran numeros. La franja inferior contiene los controles compactos; el timeline aparece en ella al mantener `SELECT`.
 - **Octava**: determina la altura de las franjas; se puede seleccionar de la 2 a la 6.
-- **Pista**: hay tres pistas independientes. El flujo antiguo conserva frases; la exploración de compositor también puede añadir `NoteEvent` individuales directamente al ciclo global.
+- **Pista**: hay cuatro pistas independientes. El flujo antiguo conserva frases; la exploración de compositor también puede añadir `NoteEvent` individuales directamente al ciclo global.
 - **Frase**: captura una interpretacion con su timing relativo, duracion y timbre por evento. Puede contener silencios al principio y al final.
-- **Timeline global**: las tres pistas avanzan sobre el mismo reloj. El transporte puede pausarse, detenerse al final o repetir una selección temporal común a las tres pistas.
-- **SELECT / selector de frases**: mantener `SELECT` intercambia la superficie de trabajo: el teclado queda visible arriba y abajo aparecen las tres pistas con la misma escala temporal y las mismas cajas de frase que el monitor superior. Cada repetición aparece como una caja consecutiva. Toca una caja para abrir el mismo editor de notas usado durante la aceptación; no hay playhead ni selección global.
+- **Timeline global**: las cuatro pistas avanzan sobre el mismo reloj. El transporte puede pausarse, detenerse al final o repetir una selección temporal común a las cuatro pistas.
+- **SELECT / compositor**: mantener `SELECT` intercambia la superficie de trabajo: arriba aparece el timeline de las cuatro pistas y abajo el piano roll de la pista seleccionada. En la franja inferior hay dos filas completas de teclado, cada una con `0..11`; la fila superior y la inferior corresponden a octavas consecutivas.
 - **PULSE GRID**: el control `PULSE` define el periodo real del reloj global en milisegundos (`250..2000`). Cada marca emite un pitido breve de 100 ms cuando `R` está activo. `A` no reinicia el reloj: grabar empieza dentro del pulso que esté sonando. Cada pulso tiene cuatro pasos; las marcas y la corrección manual usan el mismo origen. El clic no se guarda como nota.
 - **Monitor superior**: cada caja representa una frase completa, incluidos sus silencios. Una frase repetida `xN` aparece como `N` cajas consecutivas.
 - **Diario**: registro temporal de las franjas tocadas; guarda valores `0`-`11`.
@@ -48,15 +48,17 @@ Toca una franja para producir su nota. Tambien puedes tocar y arrastrar el stylu
 ### Compositor experimental de notas individuales
 
 1. Toca una franja fuera del selector para preescucharla; esto no cambia ninguna pista.
-2. Mantén `SELECT` para mostrar el timeline. Solo la región temporal `x=91..251` de la fila seleccionada acepta una inserción; las etiquetas y paneles quedan fuera. Toca un hueco para abrir `INSERT NOTE` con una nota provisional usando la última franja preescuchada.
+2. Mantén `SELECT` para mostrar el compositor. Toca una tecla del teclado inferior para preescucharla o arrástrala hasta la región temporal `x=48..251` de la pista seleccionada para abrir `INSERT NOTE` directamente.
 3. Arrastra el centro de la nota para moverla y su borde para cambiar `LENGTH`. En esta inserción los tiradores globales `START`/`END` están desactivados. `START` reproduce la preview sobre el ciclo global sin apagar las otras pistas.
 4. Pulsa `A` para colocar el `NoteEvent` en la pista o `B` para cancelarlo. Mientras aparece `INSERT NOTE`, la composición todavía no ha cambiado.
 
-Una nota individual ya aceptada se puede tocar de nuevo dentro de `x=91..251` para abrir el mismo editor y moverla o cambiar su duración. Si la posición es inválida, solapa otra nota o no queda capacidad, aparece `REJECT` y la composición permanece intacta.
+Una nota individual ya aceptada se selecciona tocándola en el compositor. Arrástrala para hacer un nudge temporal; al soltar se ajusta a la rejilla y se guarda. Pulsa `A` para abrir `DETAIL` y editarla con el editor completo, `B` para borrarla, o `UP/DOWN` para cambiar su altura relativa. `L+UP/DOWN` cambia el zoom temporal del viewport. Si la posición es inválida, solapa otra nota o no queda capacidad, aparece `REJECT` y la composición permanece intacta.
 
-Esta confirmación `A/B` es deliberadamente experimental para esta ronda. El siguiente revisor debe intentar eliminarla y conservar el gesto directo si resulta suficientemente claro y cancelable.
+El compositor muestra `COMPOSER`, regla temporal, cuatro pistas y la nota seleccionada resaltada. `B` vuelve al instrumento cuando no hay una nota seleccionada.
 
-El compositor no migra frases ni permite todavía zoom, polifonía, overdub o persistencia. Las frases anteriores siguen usando el flujo de captura y aceptación descrito abajo.
+El piano roll muestra una ventana vertical de dos octavas. Las notas fuera de esa ventana se dibujan pegadas al borde correspondiente; arrastra la franja izquierda del roll hacia arriba o abajo para desplazar la ventana y revisar otras alturas. Esto es la representación de pitch de la ROM original. Al tocar o arrastrar una tecla, la fila determina la octava de la nota.
+
+El compositor todavía no permite polifonía u overdub. Los temas sí se guardan automáticamente en la biblioteca local; el contenido de las cuatro pistas, los parámetros y la etiqueta manuscrita se recuperan al volver a abrirlos.
 
 No existe una pista master. Cualquier pista puede ser la primera en grabarse.
 
@@ -64,7 +66,7 @@ No existe una pista master. Cualquier pista puede ser la primera en grabarse.
 2. Pulsa `A`. La pista entra en `WAIT`, pero la captura ya esta abierta.
 3. Toca cuando quieras. Se conserva el timing real, incluido el silencio entre `A` y la primera nota.
 4. Pulsa `A` para cerrar la captura. Todavia no se guarda.
-5. Mantén `SELECT` para abrir el selector de frases; el teclado queda arriba y abajo aparecen las tres pistas con la misma representación temporal del monitor superior.
+5. Mantén `SELECT` para abrir el selector de frases; el teclado queda arriba y abajo aparecen las cuatro pistas con la misma representación temporal del monitor superior.
 6. Toca una caja concreta. Se abre el mismo editor de aceptación, ahora con una copia de esa frase.
 7. Toca el centro de una nota para moverla, o uno de sus bordes para cambiar `START` o `END`. Mientras mantienes pulsado, el bloque sigue libremente al stylus; al soltar, se ajusta al cuarto de pulso más cercano.
 8. Pulsa `L` corto con una nota seleccionada para activar o desactivar su sustain; la marca `S` indica que está activo. Ajusta también los límites `S` y `E` de la frase si hace falta.
@@ -97,12 +99,14 @@ Los timbres disponibles son:
 
 Cada evento conserva el timbre que tenia al grabarse.
 
-## 8. Resumen de una sesion
+## 8. Biblioteca y guardado
 
-Una sesion tipica consiste en construir poco a poco una linea en cada una de las tres pistas. Cada frase se captura libremente, se recorta, se escucha en preview y se acepta en serie. Despues se pueden silenciar pistas, pausar el transporte, deshacer la ultima frase o borrar una pista completa.
+Al arrancar aparecen `CONTINUE`, `NEW` y `SONGS`. `CONTINUE` carga el primer tema disponible; `NEW` abre una etiqueta manuscrita y crea un hueco nuevo; `SONGS` permite recorrer los temas guardados. En la etiqueta, arrastra el stylus para dibujar, `X` borra, `A` acepta y `B` vuelve atrás. Tras cualquier cambio relevante se guarda automáticamente. Si el almacenamiento no está disponible, la sesión sigue funcionando en memoria y muestra `SAVE FAILED` al intentar guardar.
 
-No se guardan datos entre sesiones.
+## 9. Resumen de una sesion
 
-## 9. Referencia rapida
+Una sesion tipica consiste en construir poco a poco una linea en cada una de las cuatro pistas. Cada frase se captura libremente, se recorta, se escucha en preview y se acepta en serie. Despues se pueden silenciar pistas, pausar el transporte, deshacer la ultima frase o borrar una pista completa.
+
+## 10. Referencia rapida
 
 `Tactil`: tocar, sliders o selector/editor de frases · `↑/↓`: octava o repeticiones en aceptación · `←/→`: pista · `A`: captura/aceptar · `B`: diario, cancelar o cerrar selector · `Y`: loop ON/OFF · `START`: transporte/preview · `X`: timbre · `R`: click de pulso ON/OFF · `SELECT`: mute o selector de frases · `L+B`: deshacer frase · `R+B`: borrar pista.
