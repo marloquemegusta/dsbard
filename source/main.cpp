@@ -1793,6 +1793,9 @@ int main() {
         int held = keysHeld();
         int pressed = held & ~previous_buttons;
         int released = previous_buttons & ~held;
+        if (pressed || released) {
+            DS_TRACE("DSDBG|INPUT|pressed=%08X|released=%08X\n", pressed, released);
+        }
         if (!trim_active && (pressed & KEY_Y)) {
             loop_button_pending = true;
             loop_button_direction_used = false;

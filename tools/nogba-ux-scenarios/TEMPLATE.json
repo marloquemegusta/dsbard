@@ -1,9 +1,15 @@
 {
   "name": "nombre-del-estado-ux",
+  "monitor": 2,
+  "tty": {
+    "markers": []
+  },
   "steps": [
     { "action": "capture", "name": "00-inicial" },
+    { "action": "button", "name": "A", "hold_ms": 120 },
     { "action": "touch", "x": 12, "y": 240, "hold_ms": 120 },
     { "action": "capture", "name": "01-tras-toque" },
+    { "action": "tty", "name": "final" },
     {
       "action": "manual",
       "instructions": "Realiza los botones o gestos complejos que quieres inspeccionar; por ejemplo, inicia y cierra una captura para abrir el recorte."

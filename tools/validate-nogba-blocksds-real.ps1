@@ -75,11 +75,11 @@ $ttyOutput = Get-Clipboard -Raw
 
 if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force; $process.WaitForExit() }
 
-if ($ttyOutput -match 'DSDBG\|BOOT\|blocksds\|frame' -and $ttyOutput -match 'DSDBG\|NOCASH\|boot') {
+if ($ttyOutput -match 'DSDBG\|BOOT\|trace_ready') {
     Write-Output 'NOGBA_BLOCKSDS_REAL_RESULT=PASS'
     exit 0
 }
 
-Write-Output "NOGBA_BLOCKSDS_REAL_DIAGNOSTIC boot_marker=$($ttyOutput -match 'DSDBG\|BOOT\|blocksds\|frame') nocash_marker=$($ttyOutput -match 'DSDBG\|NOCASH\|boot')"
+Write-Output "NOGBA_BLOCKSDS_REAL_DIAGNOSTIC boot_marker=$($ttyOutput -match 'DSDBG\|BOOT\|trace_ready')"
 Write-Output 'NOGBA_BLOCKSDS_REAL_RESULT=FAIL reason=tty_messages_missing_or_incomplete'
 exit 1

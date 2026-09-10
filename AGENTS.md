@@ -102,8 +102,8 @@ El flujo integrado debe terminar con `LOOPER_FLOW_RESULT=PASS`. El audio está d
 - Pasar la ruta de la ROM entre comillas, porque el workspace contiene espacios.
 - Activar `Options > Debugger Setup > Debug I/O at 4FFFAxx > Enabled (TTY Messages etc.)`.
 - Para ROMs BlocksDS, activar `Options > Debug eXception Setup > Disable all Warnings`: los avisos de I/O y DTCM (`0x02FF4000..0x02FF7FFF`) son falsos positivos conocidos.
-- TTY es human-in-the-loop: abrir `Window > TTY Debug Messages`, pulsar `Copy` y permitir que el script lea el portapapeles. No depender de `DEBUGMSG.TXT` ni de automatización de GUI.
-- El smoke exige `NOGBA_SMOKE_RESULT=PASS` con `SMOKE|STDERR|boot` y `SMOKE|NOCASH|boot`. La ROM real exige `NOGBA_BLOCKSDS_REAL_RESULT=PASS` y los marcadores `DSDBG|BOOT|blocksds|frame` y `DSDBG|NOCASH|boot`.
+- El runner de escenarios abre `Window > TTY Debug Messages`, ejecuta `Copy` mediante `WM_COMMAND`, guarda `tty.txt`, valida sus marcadores y restaura el portapapeles de texto. No capturar la ventana TTY ni depender de `DEBUGMSG.TXT`. Para botones automatizados usar `-InputMode vjoy`; los toques usan temporalmente el ratón y restauran foco y cursor.
+- El smoke exige `NOGBA_SMOKE_RESULT=PASS` con `SMOKE|STDERR|boot` y `SMOKE|NOCASH|boot`. La ROM real exige `NOGBA_BLOCKSDS_REAL_RESULT=PASS` y el marcador actual `DSDBG|BOOT|trace_ready`.
 - NO$GBA no valida audio. No introducir notas durante estas pruebas; silenciarlo si hace falta garantizar silencio.
 
 ### NO$GBA: capturas visuales nativas
@@ -130,7 +130,7 @@ Para recorrer checkpoints UX repetibles, usar un JSON de escenario:
 .\tools\run-nogba-ux-scenario.ps1 -ScenarioPath .\tools\nogba-ux-scenarios\mi-escenario.json -Build
 ```
 
-El runner automatiza arranque, toques, esperas y capturas; los pasos `manual` permiten realizar botones DS y confirmar el estado real antes de capturarlo. La referencia es `tools/nogba-ux-scenarios/TEMPLATE.json` y el resultado esperado es `NOGBA_UX_SCENARIO_RESULT=PASS`.
+El runner automatiza arranque en el monitor 2, botones por vJoy sin secuestrar teclado, toques con restauración del ratón, esperas, capturas de checkpoints DS y exportación textual del TTY; los pasos `manual` quedan para gestos aún no expresados. La referencia es `tools/nogba-ux-scenarios/TEMPLATE.json` y el resultado esperado es `NOGBA_UX_SCENARIO_RESULT=PASS` con `manifest.json`.
 
 Para recorridos UX totalmente automáticos usar melonDS, cuyo mapeo de teclado se controla temporalmente y se restaura al terminar:
 

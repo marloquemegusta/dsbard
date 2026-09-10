@@ -9,11 +9,15 @@ param(
     # Seconds to wait for NO$GBA windows to become available.
     [ValidateRange(1, 30)]
     [int]$StartupTimeoutSeconds = 5,
+    # Windows monitor number (1-based) where NO$GBA must run and be captured.
+    [ValidateRange(1, 16)]
+    [int]$MonitorNumber = 2,
     # Close only the NO$GBA process launched by this invocation after capture.
     [switch]$CloseLaunched
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'nogba-debug-common.ps1')
 
 if ($Build -and -not $Launch) {
     throw '-Build requires -Launch.'
@@ -94,6 +98,10 @@ try {
         throw "NO`$GBA Emulator window not found. Start it first, or use -Launch."
     }
 
+    $monitor = Get-NogbaMonitor -Number $MonitorNumber
+    Move-NogbaWindowsToMonitor -Windows $candidateWindows -Monitor $monitor
+    Write-Output "NOGBA_MONITOR number=$MonitorNumber work=$($monitor.Work.Left),$($monitor.Work.Top),$($monitor.Work.Right),$($monitor.Work.Bottom)"
+
     # A newly launched Debugger starts paused. Invoke Run exactly as the existing
     # NO$GBA validation scripts do, then allow the first frame to be presented.
     if ($launchedProcess -and $debuggerWindow) {
@@ -101,21 +109,22 @@ try {
         $runCommand = [NogbaScreenCapture]::GetMenuItemID($runMenu, 0)
         [NogbaScreenCapture]::SendMessage($debuggerWindow.Handle, 0x0111, [IntPtr]$runCommand, [IntPtr]::Zero) | Out-Null
         Start-Sleep -Milliseconds 750
+        # NO$GBA may recreate/reposition the Emulator window when execution
+        # starts. Apply the monitor placement again after Run.
+        $runningWindows = $windows | Where-Object Pid -eq $launchedProcess.Id
+        Move-NogbaWindowsToMonitor -Windows $runningWindows -Monitor $monitor
+        Start-Sleep -Milliseconds 150
     }
 
     if ([NogbaScreenCapture]::IsIconic($gameWindow.Handle)) {
         throw 'The NO$GBA Emulator window is minimized. Restore it and retry; screen capture reads the displayed pixels.'
     }
 
-    [NogbaScreenCapture]::SetForegroundWindow($gameWindow.Handle) | Out-Null
     Start-Sleep -Milliseconds 150
     [NogbaScreenCapture+RECT]$client = New-Object NogbaScreenCapture+RECT
     if (-not [NogbaScreenCapture]::GetClientRect($gameWindow.Handle, [ref]$client)) { throw 'Unable to read NO$GBA client bounds.' }
     $clientWidth = $client.Right - $client.Left
     $clientHeight = $client.Bottom - $client.Top
-    # NO$GBA 1x uses a four-pixel horizontal and eight-pixel vertical client
-    # gutter around the actual DS framebuffer on current Windows builds.
-    # Accept both its framed client area and an already-tight 256x384 client.
     if ($clientWidth -eq 256 -and $clientHeight -eq 384) {
         $cropX = 0; $cropY = 0
     } elseif ($clientWidth -eq 260 -and $clientHeight -eq 392) {
