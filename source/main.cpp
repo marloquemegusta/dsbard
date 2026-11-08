@@ -33,6 +33,34 @@
 #include "pad_60_bin.h"
 #include "pad_72_bin.h"
 #include "pad_84_bin.h"
+#include "brass_heroic_48_bin.h"
+#include "brass_heroic_60_bin.h"
+#include "brass_heroic_72_bin.h"
+#include "brass_heroic_84_bin.h"
+#include "brass_horn_48_bin.h"
+#include "brass_horn_60_bin.h"
+#include "brass_horn_72_bin.h"
+#include "brass_horn_84_bin.h"
+#include "brass_anime_48_bin.h"
+#include "brass_anime_60_bin.h"
+#include "brass_anime_72_bin.h"
+#include "brass_anime_84_bin.h"
+#include "brass_cinematic_48_bin.h"
+#include "brass_cinematic_60_bin.h"
+#include "brass_cinematic_72_bin.h"
+#include "brass_cinematic_84_bin.h"
+#include "strings_48_bin.h"
+#include "strings_60_bin.h"
+#include "strings_72_bin.h"
+#include "strings_84_bin.h"
+#include "e_guitar_48_bin.h"
+#include "e_guitar_60_bin.h"
+#include "e_guitar_72_bin.h"
+#include "e_guitar_84_bin.h"
+#include "flute_48_bin.h"
+#include "flute_60_bin.h"
+#include "flute_72_bin.h"
+#include "flute_84_bin.h"
 
 using loop_logic::NoteEvent;
 using loop_logic::PendingNoteInsertion;
@@ -52,33 +80,43 @@ static constexpr int TRACK_BOX_TOP = 15;
 static constexpr int TRACK_BOX_BOTTOM = 21;
 static constexpr int KEY_COUNT = 12;
 static constexpr int MAX_VOICES = 4;
-static constexpr int INSTRUMENTS = 10;
-static constexpr int PCM_INSTRUMENTS = 6;
+static constexpr int INSTRUMENTS = 17;
+static constexpr int PCM_INSTRUMENTS = 13;
 static constexpr int ROOTS = 4;
 static constexpr int SAMPLE_RATE = 22050;
 static constexpr int TOUCH_TIMELINE_TOP = 160;
-static constexpr int COMPOSER_RULER_TOP = 27;
-static constexpr int COMPOSER_RULER_BOTTOM = 37;
-static constexpr int COMPOSER_TRACK_TOP = 39;
-static constexpr int COMPOSER_TRACK_ROW = 27;
-static constexpr int COMPOSER_TRACK_HEIGHT = 23;
+static constexpr int COMPOSER_RULER_TOP = 16;
+static constexpr int COMPOSER_RULER_BOTTOM = 27;
+static constexpr int COMPOSER_TRACK_TOP = 30;
+static constexpr int COMPOSER_TRACK_ROW = 31;
+static constexpr int COMPOSER_TRACK_HEIGHT = 29;
 static constexpr int COMPOSER_KEYBOARD_TOP = 143;
 static constexpr int COMPOSER_KEYBOARD_ROW_HEIGHT = 24;
 static constexpr int COMPOSER_KEYBOARD_ROW_STEP = 25;
 static constexpr int COMPOSER_KEYBOARD_ROWS = 2;
+static constexpr uint32_t COMPOSER_MACRO_MIN_MS = 20000;
 static constexpr uint32_t COMPOSER_CONTENT_LIMIT_MS = 60000;
 static constexpr uint32_t MIN_LOOP_MS = 120;
 static constexpr uint16_t JOURNAL_CAPACITY = 256;
 static constexpr uint32_t HOLD_MS = 850;
 static constexpr int MAX_LIVE_TAILS = 4;
-static constexpr uint32_t DEFAULT_PULSE_MS = 1000;
+static constexpr uint32_t DEFAULT_PULSE_MS = 500;
 static constexpr uint32_t MIN_PULSE_MS = 250;
 static constexpr uint32_t MAX_PULSE_MS = 2000;
 static constexpr uint32_t PULSE_STEP_MS = 125;
 static constexpr uint32_t METRONOME_CLICK_MS = 100;
 static const int SAMPLE_ROOTS[ROOTS] = {48, 60, 72, 84};
-static const char* TIMBRE_NAMES[INSTRUMENTS] = {"RHODES", "KALIMBA", "BASS", "PLUCK", "GLASS", "PAD", "SQUARE", "PULSE", "THIN", "DARK"};
-static const DutyCycle PSG_DUTIES[4] = {DutyCycle_50, DutyCycle_25, DutyCycle_12, DutyCycle_75};
+static const char* TIMBRE_NAMES[INSTRUMENTS] = {
+    "RHODES", "KALIMBA", "BASS", "PLUCK", "GLASS", "PAD",
+    "BRASS HEROIC", "BRASS HORN", "BRASS ANIME", "BRASS CINEMATIC",
+    "STRINGS", "E-GUITAR", "FLUTE",
+    "SQUARE", "PULSE", "THIN", "DARK"
+};
+static const uint32_t PCM_LOOP_POINTS[PCM_INSTRUMENTS] = {
+    0u, 0u, 0u, 0u, 0u, 35280u,
+    14332u, 14332u, 14332u, 14332u, 17640u, 11025u, 14332u
+};
+static const DutyCycle PSG_DUTIES[4] = {DutyCycle_75, DutyCycle_25, DutyCycle_12, DutyCycle_50};
 struct SampleRef { const void* data; uint32_t size; };
 #define SAMPLE(kind, root) { kind##_##root##_bin, kind##_##root##_bin_size }
 static const SampleRef SAMPLES[PCM_INSTRUMENTS][ROOTS] = {
@@ -87,7 +125,14 @@ static const SampleRef SAMPLES[PCM_INSTRUMENTS][ROOTS] = {
     {SAMPLE(bass,48), SAMPLE(bass,60), SAMPLE(bass,72), SAMPLE(bass,84)},
     {SAMPLE(pluck,48), SAMPLE(pluck,60), SAMPLE(pluck,72), SAMPLE(pluck,84)},
     {SAMPLE(glass,48), SAMPLE(glass,60), SAMPLE(glass,72), SAMPLE(glass,84)},
-    {SAMPLE(pad,48), SAMPLE(pad,60), SAMPLE(pad,72), SAMPLE(pad,84)}
+    {SAMPLE(pad,48), SAMPLE(pad,60), SAMPLE(pad,72), SAMPLE(pad,84)},
+    {SAMPLE(brass_heroic,48), SAMPLE(brass_heroic,60), SAMPLE(brass_heroic,72), SAMPLE(brass_heroic,84)},
+    {SAMPLE(brass_horn,48), SAMPLE(brass_horn,60), SAMPLE(brass_horn,72), SAMPLE(brass_horn,84)},
+    {SAMPLE(brass_anime,48), SAMPLE(brass_anime,60), SAMPLE(brass_anime,72), SAMPLE(brass_anime,84)},
+    {SAMPLE(brass_cinematic,48), SAMPLE(brass_cinematic,60), SAMPLE(brass_cinematic,72), SAMPLE(brass_cinematic,84)},
+    {SAMPLE(strings,48), SAMPLE(strings,60), SAMPLE(strings,72), SAMPLE(strings,84)},
+    {SAMPLE(e_guitar,48), SAMPLE(e_guitar,60), SAMPLE(e_guitar,72), SAMPLE(e_guitar,84)},
+    {SAMPLE(flute,48), SAMPLE(flute,60), SAMPLE(flute,72), SAMPLE(flute,84)}
 };
 
 static Track tracks[TRACKS] = {};
@@ -112,14 +157,18 @@ static bool paused = false;
 static bool transport_finished = false;
 static bool loop_enabled = true;
 static loop_logic::TimelineSelection timeline_selection = {0, 0, 0, false};
-static bool focus_timeline = false;
+static bool focus_timeline = true;
 static int phrase_picker_selected = -1;
 static int composer_selected_note = -1;
+static bool detail_note_active = false;
+static uint32_t detail_view_start_ms = 0;
+static loop_logic::NoteEditMode composer_edit_mode = loop_logic::NOTE_MOVE;
 static bool composer_dragging_note = false;
 static bool composer_drag_changed = false;
 static uint32_t composer_drag_origin_ms = 0;
 static uint32_t composer_drag_original_start_ms = 0;
 static uint32_t composer_drag_original_end_ms = 0;
+static bool composer_ruler_seeking = false;
 static uint32_t composer_view_start_ms = 0;
 static uint32_t composer_view_ms = loop_logic::COMPOSER_VIEW_MS;
 static int composer_pitch_window_octave = 4;
@@ -260,6 +309,10 @@ static void sync_memory_from_song() {
     paused = false;
     transport_finished = false;
     timeline_selection = {0, 0, 0, false};
+    focus_timeline = true;
+    composer_selected_note = -1;
+    detail_note_active = false;
+    detail_view_start_ms = 0;
 }
 
 static uint32_t now_ms() {
@@ -324,10 +377,11 @@ static int play_instrument(int instrument, int midi, u8 volume) {
         return soundPlayPSG(PSG_DUTIES[instrument - PCM_INSTRUMENTS],
                             loop_logic::psg_frequency_for_midi(midi), volume, 64);
     int root = root_index_for_note(midi);
+    uint32_t loop_point = PCM_LOOP_POINTS[instrument];
     return soundPlaySample(SAMPLES[instrument][root].data, SoundFormat_8Bit,
                            SAMPLES[instrument][root].size, sample_frequency(midi, SAMPLE_ROOTS[root]),
                            pcm_volume_for_note(midi, volume), 64,
-                           instrument == 5, instrument == 5 ? 35280u : 0u);
+                           loop_point > 0u, loop_point);
 }
 
 static void kill_voice(int slot) {
@@ -611,7 +665,7 @@ static bool rebuild_track_with_phrase(const Track& original, int phrase_index,
         original, phrase_index, edited_phrase, edited_repeat_count, rebuilt);
 }
 
-static bool open_phrase_editor(int track_index, int phrase_index) {
+[[maybe_unused]] static bool open_phrase_editor(int track_index, int phrase_index) {
     if (track_index < 0 || track_index >= TRACKS) return false;
     const Track& source = tracks[track_index];
     if (phrase_index < 0 || phrase_index >= source.phrase_count) return false;
@@ -858,7 +912,7 @@ static uint32_t composer_content_duration_ms() {
     return duration > COMPOSER_CONTENT_LIMIT_MS ? COMPOSER_CONTENT_LIMIT_MS : duration;
 }
 
-static int composer_track_index_for_y(int y) {
+[[maybe_unused]] static int composer_track_index_for_y(int y) {
     if (y < COMPOSER_TRACK_TOP || y >= COMPOSER_TRACK_TOP + COMPOSER_TRACK_ROW * TRACKS)
         return -1;
     int index = (y - COMPOSER_TRACK_TOP) / COMPOSER_TRACK_ROW;
@@ -875,9 +929,57 @@ static uint32_t composer_time_for_x(int x) {
     return loop_logic::composer_time_for_x(x, composer_view_start_ms, composer_view_ms);
 }
 
+static void update_detail_view_for_note(const NoteEvent& event) {
+    uint32_t span = pulse_ms * 2u;
+    if (span == 0) span = 1000u;
+    uint32_t note_pulse = (event.start_ms / pulse_ms) * pulse_ms;
+    detail_view_start_ms = note_pulse >= pulse_ms / 2u ? note_pulse - pulse_ms / 2u : 0;
+}
+
+static bool insert_composer_note_direct(uint32_t requested_ms, int midi, uint8_t inst) {
+    Track& target = tracks[selected_track];
+    uint32_t cycle_end = COMPOSER_CONTENT_LIMIT_MS;
+    loop_logic::begin_note_insertion(note_insert_pending, (int16_t)midi,
+                                     inst, requested_ms, pulse_ms,
+                                     sustain_active ? sustain_release_level : 0, cycle_end);
+    NoteEvent inserted_ev = note_insert_pending.event;
+    if (!loop_logic::commit_note_insertion(target, note_insert_pending)) {
+        show_note_rejection("OVERLAP/FULL");
+        return false;
+    }
+    target.occupied = true;
+    if (target.duration_ms < inserted_ev.end_ms) {
+        uint32_t snapped_dur = loop_logic::snap_loop_duration(inserted_ev.end_ms, pulse_ms);
+        if (snapped_dur < composer_view_ms) snapped_dur = composer_view_ms;
+        target.duration_ms = snapped_dur;
+    }
+    int found_index = -1;
+    for (uint16_t i = 0; i < target.event_count; ++i) {
+        if (target.events[i].start_ms == inserted_ev.start_ms &&
+            target.events[i].midi_note == inserted_ev.midi_note) {
+            found_index = (int)i;
+            break;
+        }
+    }
+    composer_selected_note = found_index;
+    detail_note_active = (found_index >= 0);
+    if (detail_note_active) update_detail_view_for_note(target.events[found_index]);
+    persist_active_song();
+    bottom_needs_redraw = true;
+    DS_TRACE("DSDBG|NOTE_INSERT_OPEN|track=%d|midi=%d|start=%lu|end=%lu\n",
+             selected_track, midi,
+             (unsigned long)inserted_ev.start_ms,
+             (unsigned long)inserted_ev.end_ms);
+    return true;
+}
+
 static void start_note_insertion(uint32_t requested_ms) {
     if (preview_note_midi < 0) {
         show_note_rejection("NO PREVIEW");
+        return;
+    }
+    if (focus_timeline) {
+        insert_composer_note_direct(requested_ms, preview_note_midi, preview_note_instrument);
         return;
     }
     uint32_t cycle_end = song_duration_ms();
@@ -918,6 +1020,17 @@ static void open_direct_note_editor(uint16_t event_index) {
     Track& source = tracks[selected_track];
     if (event_index >= source.event_count) {
         show_note_rejection("INVALID NOTE");
+        return;
+    }
+    if (focus_timeline) {
+        composer_selected_note = (int)event_index;
+        detail_note_active = true;
+        update_detail_view_for_note(source.events[event_index]);
+        bottom_needs_redraw = true;
+        DS_TRACE("DSDBG|NOTE_EDIT_OPEN|track=%d|event=%u|start=%lu|end=%lu\n",
+                 selected_track, (unsigned)event_index,
+                 (unsigned long)source.events[event_index].start_ms,
+                 (unsigned long)source.events[event_index].end_ms);
         return;
     }
     uint32_t cycle_end = song_duration_ms();
@@ -980,7 +1093,7 @@ static void persist_active_song() {
     sync_song_from_memory();
     bool saved = storage_ready && song_files::save_atomic(active_song_id, active_song);
     DS_TRACE("DSDBG|AUTOSAVE|id=%d|ok=%d\n", active_song_id, saved ? 1 : 0);
-    if (!saved) show_note_rejection("SAVE FAILED");
+    if (storage_ready && !saved) show_note_rejection("SAVE FAILED");
 }
 
 static void draw_phrase_boxes(u16* target, const Track& track, int y, uint32_t song_duration,
@@ -1039,7 +1152,7 @@ static void draw_direct_note_events(u16* target, const Track& track, int y,
     }
 }
 
-static int phrase_picker_hit(int x, int y) {
+[[maybe_unused]] static int phrase_picker_hit(int x, int y) {
     int track_index = track_index_for_y(y);
     if (track_index < 0 || track_index >= TRACKS) return -1;
     const Track& track = tracks[track_index];
@@ -1066,10 +1179,20 @@ static int direct_note_hit(int x, int y) {
     if (focus_timeline) {
         if (x < loop_logic::COMPOSER_TIMELINE_LEFT_X ||
             x > loop_logic::COMPOSER_TIMELINE_RIGHT_X) return -1;
-        int composer_track = composer_track_index_for_y(y);
-        if (composer_track < 0) return -1;
+        if (y < 28 || y >= COMPOSER_KEYBOARD_TOP) return -1;
+        const Track& track = tracks[selected_track];
         uint32_t time_ms = composer_time_for_x(x);
-        return loop_logic::find_direct_event_at(tracks[composer_track], time_ms);
+        int exact = loop_logic::find_direct_event_at(track, time_ms);
+        if (exact >= 0) return exact;
+        for (uint16_t i = 0; i < track.event_count; ++i) {
+            const NoteEvent& ev = track.events[i];
+            int left = composer_x_for_time(ev.start_ms);
+            int right = composer_x_for_time(ev.end_ms);
+            loop_logic::ensure_note_visual_width(
+                left, right, loop_logic::COMPOSER_TIMELINE_LEFT_X, loop_logic::COMPOSER_TIMELINE_RIGHT_X);
+            if (x >= left - 2 && x <= right + 2) return (int)i;
+        }
+        return -1;
     }
     if (!loop_logic::timeline_x_is_valid(x)) return -1;
     int track_index = track_index_for_y(y);
@@ -1234,6 +1357,22 @@ static void update_loops() {
     if (note_insert_active) update_note_insert_preview();
 }
 
+static void draw_hollow_rect(u16* target, int x0, int y0, int x1, int y1, u16 color) {
+    if (x0 < 0) x0 = 0;
+    if (x1 > 255) x1 = 255;
+    if (y0 < 0) y0 = 0;
+    if (y1 > 191) y1 = 191;
+    if (x0 > x1 || y0 > y1) return;
+    for (int x = x0; x <= x1; ++x) {
+        target[y0 * 256 + x] = color;
+        target[y1 * 256 + x] = color;
+    }
+    for (int y = y0; y <= y1; ++y) {
+        target[y * 256 + x0] = color;
+        target[y * 256 + x1] = color;
+    }
+}
+
 static void draw_composer_timeline(u16* target, u16 panel, u16 panel_alt, u16 line,
                                    u16 text, u16 accent, u16 green,
                                    bool include_keyboard = true,
@@ -1241,122 +1380,115 @@ static void draw_composer_timeline(u16* target, u16 panel, u16 panel_alt, u16 li
     composer_view_ms = loop_logic::clamp_composer_view(composer_view_ms);
     composer_view_start_ms = loop_logic::clamp_composer_start(
         composer_view_start_ms, composer_content_duration_ms(), composer_view_ms);
-    fill_rect(target, 4, COMPOSER_RULER_TOP, 251, COMPOSER_RULER_BOTTOM, panel);
-    if (include_title) draw_text_bitmap(target, 8, 29, "COMPOSER", text, 1);
+    uint32_t macro_duration = song_duration_ms();
+    if (macro_duration < COMPOSER_MACRO_MIN_MS) macro_duration = COMPOSER_MACRO_MIN_MS;
+
+    fill_rect(target, 0, COMPOSER_RULER_TOP, 255, COMPOSER_RULER_BOTTOM, panel);
+    if (include_title) draw_text_bitmap(target, 8, 18, "COMPOSER", text, 1);
     int ruler_left = loop_logic::COMPOSER_TIMELINE_LEFT_X;
     int ruler_right = loop_logic::COMPOSER_TIMELINE_RIGHT_X;
+    int ruler_span = ruler_right - ruler_left;
     for (int x = ruler_left; x <= ruler_right; ++x)
         target[COMPOSER_RULER_BOTTOM * 256 + x] = line;
-    uint32_t marker_step = composer_view_ms <= 5000 ? 1000 : 2000;
-    uint32_t marker = (composer_view_start_ms / marker_step) * marker_step;
-    if (marker < composer_view_start_ms) marker += marker_step;
-    for (; marker <= composer_view_start_ms + composer_view_ms; marker += marker_step) {
-        int x = composer_x_for_time(marker);
+
+    uint32_t marker_step = 2000;
+    for (uint32_t marker = 0; marker <= macro_duration; marker += marker_step) {
+        int x = ruler_left + (int)(((uint64_t)marker * (uint32_t)ruler_span) / macro_duration);
+        if (x < ruler_left) x = ruler_left;
+        if (x > ruler_right) x = ruler_right;
         for (int y = COMPOSER_RULER_BOTTOM - 3; y < COMPOSER_RULER_BOTTOM; ++y)
             target[y * 256 + x] = accent;
         char label[12];
-        snprintf(label, sizeof(label), "%lus", (unsigned long)(marker / 1000u));
-        draw_text_bitmap(target, x - 4, 28, label, text, 1);
+        snprintf(label, sizeof(label), "%luS", (unsigned long)(marker / 1000u));
+        int lw = (int)strlen(label) * 4 - 1;
+        int lx = x - 2;
+        if (lx < ruler_left) lx = ruler_left;
+        if (lx + lw > 254) lx = 254 - lw;
+        draw_text_bitmap(target, lx, 18, label, text, 1);
         if (marker > 60000u - marker_step) break;
     }
-        const u16 subdivision = BIT(15) | RGB15(5, 8, 14);
-        const u16 beat = BIT(15) | RGB15(8, 13, 21);
-        const u16 bar = BIT(15) | RGB15(12, 19, 29);
+
+    const u16 subdivision = BIT(15) | RGB15(5, 8, 14);
+    const u16 beat = BIT(15) | RGB15(8, 13, 21);
+    const u16 bar = BIT(15) | RGB15(12, 19, 29);
     const u16 selected = BIT(15) | RGB15(24, 31, 18);
     const int pitch_window_low = composer_pitch_window_low;
+
     for (int i = 0; i < TRACKS; ++i) {
         int y = COMPOSER_TRACK_TOP + i * COMPOSER_TRACK_ROW;
         const Track& track = tracks[i];
         bool active = selected_track == i;
-        fill_rect(target, 4, y, 251, y + COMPOSER_TRACK_HEIGHT, active ? panel_alt : panel);
-        for (int x = 4; x <= 251; ++x) target[y * 256 + x] = active ? accent : line;
-        char label[12];
+        fill_rect(target, 0, y, 255, y + COMPOSER_TRACK_ROW - 1, active ? panel_alt : panel);
+        for (int x = 0; x <= 255; ++x) target[y * 256 + x] = line;
+        for (int gy = y; gy < y + COMPOSER_TRACK_ROW; ++gy)
+            target[gy * 256 + ruler_left] = line;
+
+        char label[4];
         snprintf(label, sizeof(label), "%d", i + 1);
-        draw_text_bitmap(target, 8, y + 5, label, text, 1);
-        loop_logic::PulseGrid grid{pulse_ms};
-        uint32_t view_end = composer_view_start_ms + composer_view_ms;
-        uint32_t first_step = (composer_view_start_ms * 4u) / pulse_ms;
-        if (grid.time(first_step) < composer_view_start_ms) ++first_step;
-        uint32_t last_step = (view_end * 4u) / pulse_ms + 1u;
-        for (uint32_t step = first_step; step <= last_step; ++step) {
-            uint32_t value = grid.time(step);
-            if (value > view_end) break;
-            int gx = composer_x_for_time(value);
-            loop_logic::PulseGridLineKind kind = loop_logic::pulse_grid_line_kind(step, 4);
-            u16 color = kind == loop_logic::GRID_BAR ? bar :
-                        (kind == loop_logic::GRID_BEAT ? beat : subdivision);
-            bool dotted = kind == loop_logic::GRID_SUBDIVISION;
-            for (int gy = y + 1; gy <= y + COMPOSER_TRACK_HEIGHT - 1; ++gy)
-                if (!dotted || ((gy - y) & 1)) target[gy * 256 + gx] = color;
+        draw_text_bitmap(target, 3, y + 4, label, active ? green : text, 1);
+
+        for (int x = ruler_left + 1; x <= ruler_right; ++x) {
+            if ((x & 3) == 2)
+                target[(y + 20) * 256 + x] = subdivision;
         }
+
+        uint32_t total_beats = macro_duration / (pulse_ms > 0 ? pulse_ms : 500u);
+        for (uint32_t b = 1; b <= total_beats; ++b) {
+            uint32_t b_ms = b * pulse_ms;
+            if (b_ms > macro_duration) break;
+            int gx = ruler_left + (int)(((uint64_t)b_ms * (uint32_t)ruler_span) / macro_duration);
+            bool is_bar = (b % 4u) == 0;
+            u16 gcol = is_bar ? bar : beat;
+            for (int gy = y + 1; gy < y + COMPOSER_TRACK_ROW; ++gy) {
+                if (is_bar || ((gy - y) & 1))
+                    target[gy * 256 + gx] = gcol;
+            }
+        }
+
         for (uint16_t event_index = 0; event_index < track.event_count; ++event_index) {
             const NoteEvent& event = track.events[event_index];
-            bool in_phrase = false;
-            for (uint8_t p = 0; p < track.phrase_count && !in_phrase; ++p)
-                for (uint16_t repetition = 0; repetition < track.phrases[p].repeat_count; ++repetition)
-                    if (loop_logic::event_belongs_to_phrase(event, track.phrases[p], repetition)) {
-                        in_phrase = true;
-                        break;
-                    }
-            if (in_phrase || event.end_ms <= composer_view_start_ms ||
-                event.start_ms >= composer_view_start_ms + composer_view_ms) continue;
-            int left = composer_x_for_time(event.start_ms);
-            int right = composer_x_for_time(event.end_ms);
-            loop_logic::ensure_note_visual_width(left, right, ruler_left, ruler_right);
+            if (event.start_ms >= macro_duration) continue;
+            int left = ruler_left + (int)(((uint64_t)event.start_ms * (uint32_t)ruler_span) / macro_duration);
+            int right = ruler_left + (int)(((uint64_t)event.end_ms * (uint32_t)ruler_span) / macro_duration);
+            if (left < ruler_left + 1) left = ruler_left + 1;
+            if (right > ruler_right) right = ruler_right;
+            if (right < left + 2) right = left + 2 <= ruler_right ? left + 2 : ruler_right;
             bool is_selected = active && (int)event_index == composer_selected_note;
             u16 fill = is_selected ? selected : green;
             int note_y = loop_logic::pitch_lane_y(event.midi_note, y, pitch_window_low);
-            if (note_y < y + 4) note_y = y + 4;
-            if (note_y > y + 27) note_y = y + 27;
-            fill_rect(target, left + 1,
-                      note_y - loop_logic::NOTE_VISUAL_HALF_HEIGHT,
-                      right - 1,
-                      note_y + loop_logic::NOTE_VISUAL_HALF_HEIGHT, fill);
-            for (int x = left + 1; x < right; ++x) {
-                target[(note_y - loop_logic::NOTE_VISUAL_HALF_HEIGHT - 1) * 256 + x] = line;
-                target[(note_y + loop_logic::NOTE_VISUAL_HALF_HEIGHT + 1) * 256 + x] = line;
-            }
-            for (int edge_y = note_y - loop_logic::NOTE_VISUAL_HALF_HEIGHT - 1;
-                 edge_y <= note_y + loop_logic::NOTE_VISUAL_HALF_HEIGHT + 1; ++edge_y) {
-                target[edge_y * 256 + left] = line;
-                target[edge_y * 256 + right] = line;
-            }
-            if (right - left >= 8) {
-                char pitch[4];
-                snprintf(pitch, sizeof(pitch), "%d", (int)event.midi_note % 12);
-                draw_text_bitmap(target, loop_logic::centered_note_label_x(left, right, event.midi_note),
-                                 note_y - 2, pitch, line, 1);
+            if (note_y < y + 5) note_y = y + 5;
+            if (note_y > y + COMPOSER_TRACK_ROW - 5) note_y = y + COMPOSER_TRACK_ROW - 5;
+            fill_rect(target, left, note_y - 2, right, note_y + 2, fill);
+            draw_hollow_rect(target, left, note_y - 3, right, note_y + 3, line);
+        }
+
+        if (active) {
+            int vx0 = ruler_left + (int)(((uint64_t)composer_view_start_ms * (uint32_t)ruler_span) / macro_duration);
+            int vx1 = ruler_left + (int)(((uint64_t)(composer_view_start_ms + composer_view_ms) * (uint32_t)ruler_span) / macro_duration);
+            if (vx0 < ruler_left + 1) vx0 = ruler_left + 1;
+            if (vx1 > ruler_right) vx1 = ruler_right;
+            draw_hollow_rect(target, vx0, y + 1, vx1, y + COMPOSER_TRACK_ROW - 1, green);
+            if (detail_note_active) {
+                uint32_t d_end = detail_view_start_ms + 2u * pulse_ms;
+                int dx0 = ruler_left + (int)(((uint64_t)detail_view_start_ms * (uint32_t)ruler_span) / macro_duration);
+                int dx1 = ruler_left + (int)(((uint64_t)d_end * (uint32_t)ruler_span) / macro_duration);
+                if (dx0 < ruler_left + 1) dx0 = ruler_left + 1;
+                if (dx1 > ruler_right) dx1 = ruler_right;
+                if (dx1 <= dx0) dx1 = dx0 + 2 <= ruler_right ? dx0 + 2 : ruler_right;
+                draw_hollow_rect(target, dx0, y + 2, dx1, y + COMPOSER_TRACK_ROW - 2, accent);
             }
         }
     }
-    int playhead = composer_x_for_time(transport_ms);
-    fill_rect(target, playhead, COMPOSER_RULER_BOTTOM + 1, playhead + 1,
-              COMPOSER_TRACK_TOP + COMPOSER_TRACK_ROW * TRACKS - 2, green);
-    if (include_keyboard) {
-        fill_rect(target, 0, COMPOSER_KEYBOARD_TOP, 255, 191, panel);
-        const u16 piano_white = BIT(15) | RGB15(5, 8, 14);
-        const u16 piano_edge = BIT(15) | RGB15(14, 18, 24);
-        for (int row = 0; row < COMPOSER_KEYBOARD_ROWS; ++row) {
-            int piano_top = COMPOSER_KEYBOARD_TOP + row * COMPOSER_KEYBOARD_ROW_STEP;
-            int piano_bottom = piano_top + COMPOSER_KEYBOARD_ROW_HEIGHT - 1;
-            for (int i = 0; i < KEY_COUNT; ++i) {
-                int left = (i * 256) / KEY_COUNT;
-                int right = ((i + 1) * 256) / KEY_COUNT - 1;
-                bool pressed_key = composer_keyboard_dragging &&
-                    composer_keyboard_key == i && composer_keyboard_row == row;
-                fill_rect(target, left, piano_top, right, piano_bottom,
-                          pressed_key ? green : piano_white);
-                for (int y = piano_top; y <= piano_bottom; ++y) {
-                    target[y * 256 + left] = piano_edge;
-                    target[y * 256 + right] = piano_edge;
-                }
-                draw_note_label(i, left + ((right - left) - (i < 10 ? 6 : 14)) / 2,
-                                piano_top + 5, pressed_key ? piano_white : text);
-            }
-        }
-        for (int x = 0; x < 256; ++x)
-            target[(COMPOSER_KEYBOARD_TOP + COMPOSER_KEYBOARD_ROW_HEIGHT) * 256 + x] = piano_edge;
-    }
+    int bottom_border_y = COMPOSER_TRACK_TOP + COMPOSER_TRACK_ROW * TRACKS;
+    for (int x = 0; x <= 255; ++x) target[bottom_border_y * 256 + x] = line;
+
+    uint32_t song_dur = song_duration_ms();
+    uint32_t play_phase = song_dur > 0 ? (transport_ms % song_dur) : (transport_ms % macro_duration);
+    int playhead = ruler_left + (int)(((uint64_t)play_phase * (uint32_t)ruler_span) / macro_duration);
+    if (playhead < ruler_left) playhead = ruler_left;
+    if (playhead > ruler_right - 1) playhead = ruler_right - 1;
+    fill_rect(target, playhead, COMPOSER_RULER_BOTTOM - 3, playhead + 1, bottom_border_y, green);
+    (void)include_keyboard;
 }
 
 static void draw_composer_touch_screen(u16* target, u16 panel, u16 panel_alt,
@@ -1365,39 +1497,87 @@ static void draw_composer_touch_screen(u16* target, u16 panel, u16 panel_alt,
         for (int x = 0; x < 256; ++x)
             target[y * 256 + x] = BIT(15) | RGB15(1, 1, 2);
 
-    fill_rect(target, 4, 4, 251, 25, panel);
+    fill_rect(target, 4, 4, 251, 14, panel);
     for (int x = 4; x <= 251; ++x) {
         target[4 * 256 + x] = line;
-        target[25 * 256 + x] = line;
+        target[14 * 256 + x] = line;
     }
-    char header[40];
     const Track& selected = tracks[selected_track];
-    const char* state = selected.occupied ? (selected.muted ? "MUTE" : "PLAY") : "EMPTY";
-    snprintf(header, sizeof(header), "TRK %d  %s  %d  %s", selected_track + 1,
-             state, octave, TIMBRE_NAMES[timbre]);
-    draw_text_bitmap(target, 8, 9, header, text, 1);
+    const char* state = (recording && recording_slot == selected_track) ? "REC" :
+                        (selected.occupied ? (selected.muted ? "MUTE" : "PLAY") : "EMPTY");
+    draw_text_bitmap(target, 6, 7, "TRK", green, 1);
+    char trk_num[16];
+    snprintf(trk_num, sizeof(trk_num), "%d", selected_track + 1);
+    draw_text_bitmap(target, 26, 7, trk_num, text, 1);
+    draw_text_bitmap(target, 38, 7, paused ? "||" : ">", paused ? accent : green, 1);
+    draw_text_bitmap(target, 50, 7, state, text, 1);
+    draw_text_bitmap(target, 86, 7, "OCT", text, 1);
+    char oct_pair[32];
+    snprintf(oct_pair, sizeof(oct_pair), "%d %d", octave, octave + 1);
+    draw_text_bitmap(target, 106, 7, oct_pair, text, 1);
+    draw_text_bitmap(target, 130, 7, TIMBRE_NAMES[timbre], text, 1);
+    if (now_ms() < note_rejection_until)
+        draw_text_bitmap(target, 188, 7, note_rejection_text, green, 1);
+
+    const int roll_left = loop_logic::COMPOSER_TIMELINE_LEFT_X;
+    const int roll_right = loop_logic::COMPOSER_TIMELINE_RIGHT_X;
+    fill_rect(target, 0, COMPOSER_RULER_TOP, 255, COMPOSER_RULER_BOTTOM, panel);
+    for (int x = roll_left; x <= roll_right; ++x)
+        target[COMPOSER_RULER_BOTTOM * 256 + x] = accent;
+
+    char ruler[12];
+    uint32_t r_step = composer_view_ms <= 5000 ? 1000 : 2000;
+    uint32_t r_start = (composer_view_start_ms / r_step) * r_step;
+    if (r_start < composer_view_start_ms) r_start += r_step;
+    for (uint32_t marker = r_start;
+         marker <= composer_view_start_ms + composer_view_ms; marker += r_step) {
+        int x = composer_x_for_time(marker);
+        if (x < roll_left || x > roll_right) continue;
+        for (int y = COMPOSER_RULER_BOTTOM - 3; y < COMPOSER_RULER_BOTTOM; ++y)
+            target[y * 256 + x] = accent;
+        snprintf(ruler, sizeof(ruler), "%luS", (unsigned long)(marker / 1000u));
+        int lw = (int)strlen(ruler) * 4 - 1;
+        int lx = x - 2;
+        if (lx < roll_left) lx = roll_left;
+        if (lx + lw > 254) lx = 254 - lw;
+        draw_text_bitmap(target, lx, 18, ruler, text, 1);
+    }
 
     const int roll_top = 28;
     const int roll_bottom = COMPOSER_KEYBOARD_TOP - 4;
-    const int roll_left = loop_logic::COMPOSER_TIMELINE_LEFT_X;
-    const int roll_right = loop_logic::COMPOSER_TIMELINE_RIGHT_X;
-    fill_rect(target, 4, roll_top, 251, roll_bottom, panel_alt);
-    for (int x = roll_left; x <= roll_right; ++x)
-        target[roll_top * 256 + x] = accent;
-    char ruler[12];
-    for (uint32_t marker = composer_view_start_ms;
-         marker <= composer_view_start_ms + composer_view_ms; marker += 1000) {
-        int x = composer_x_for_time(marker);
-        if (x < roll_left || x > roll_right) continue;
-        snprintf(ruler, sizeof(ruler), "%lus", (unsigned long)(marker / 1000u));
-        draw_text_bitmap(target, x - 3, 29, ruler, text, 1);
+    const u16 ladder_border = BIT(15) | RGB15(12, 19, 29);
+    const u16 ladder_tick = BIT(15) | RGB15(15, 21, 29);
+    fill_rect(target, 0, roll_top, roll_left - 1, roll_bottom, panel);
+    for (int y = roll_top; y <= roll_bottom; ++y) {
+        target[y * 256 + roll_left] = ladder_border;
+        if (y >= 31 && y <= 131) target[y * 256 + 6] = line;
     }
+    for (int oct_mark = 7; oct_mark >= 2; --oct_mark) {
+        int idx = 7 - oct_mark;
+        int ly = 29 + idx * 20;
+        char oct_label[2] = {(char)('0' + oct_mark), '\0'};
+        draw_text_bitmap(target, 1, ly, oct_label, text, 1);
+        int ty = ly + 2;
+        for (int tx = 6; tx <= 15; ++tx)
+            target[ty * 256 + tx] = ladder_tick;
+    }
+    int slider_y = 90 - ((composer_pitch_window_low - 60) * 20) / 12;
+    if (slider_y < 30) slider_y = 30;
+    if (slider_y > 132) slider_y = 132;
+    fill_rect(target, 5, slider_y, 16, slider_y + 4, green);
 
-    const int lane_bottom = roll_bottom - 2;
-    const int lane_top = roll_top + 12;
-    const int lane_height = lane_bottom - lane_top;
+    fill_rect(target, roll_left + 1, roll_top, roll_right, roll_bottom, panel_alt);
     const u16 subdivision = BIT(15) | RGB15(5, 8, 14);
     const u16 beat = BIT(15) | RGB15(8, 13, 21);
+    for (int band = 0; band <= 10; ++band) {
+        int py = roll_top + (band * 108) / 10;
+        u16 pcol = (band == 5) ? line : subdivision;
+        for (int x = roll_left + 1; x <= roll_right; ++x) {
+            target[py * 256 + x] = pcol;
+            if (py + 1 <= roll_bottom) target[(py + 1) * 256 + x] = pcol;
+        }
+    }
+
     loop_logic::PulseGrid grid{pulse_ms};
     uint32_t view_end = composer_view_start_ms + composer_view_ms;
     uint32_t first_step = (composer_view_start_ms * 4u) / pulse_ms;
@@ -1405,68 +1585,157 @@ static void draw_composer_touch_screen(u16* target, u16 panel, u16 panel_alt,
     for (uint32_t step = first_step; grid.time(step) <= view_end; ++step) {
         uint32_t value = grid.time(step);
         int x = composer_x_for_time(value);
-        if (x < roll_left || x > roll_right) continue;
-        u16 color = loop_logic::pulse_grid_line_kind(step, 4) == loop_logic::GRID_BEAT
-            ? beat : subdivision;
-        bool dotted = loop_logic::pulse_grid_line_kind(step, 4) == loop_logic::GRID_SUBDIVISION;
-        for (int y = lane_top; y <= lane_bottom; ++y)
-            if (!dotted || ((y - lane_top) & 1)) target[y * 256 + x] = color;
+        if (x > roll_left && x <= roll_right) {
+            bool is_beat = loop_logic::pulse_grid_line_kind(step, 4) != loop_logic::GRID_SUBDIVISION;
+            u16 color = is_beat ? beat : subdivision;
+            for (int y = roll_top; y <= roll_bottom; ++y)
+                if (is_beat || ((y - roll_top) & 1) == 0) target[y * 256 + x] = color;
+        }
         if (value > view_end - (pulse_ms / 4u)) break;
     }
-    for (int semitone = 0; semitone <= loop_logic::PITCH_WINDOW_SEMITONES; ++semitone) {
-        int y = lane_bottom - (semitone * lane_height) / loop_logic::PITCH_WINDOW_SEMITONES;
-        for (int x = roll_left; x <= roll_right; ++x)
-            if ((semitone % 12) == 0) target[y * 256 + x] = accent;
-    }
-    for (int octave_mark = 5; octave_mark >= 1; --octave_mark) {
-        int y = lane_top + ((5 - octave_mark) * lane_height) / 5;
-        char octave_label[2] = {(char)('0' + octave_mark), '\0'};
-        draw_text_bitmap(target, 7, y + 1, octave_label, text, 1);
-    }
+
     int pitch_low = composer_pitch_window_low;
+    const u16 note_fill_sel = BIT(15) | RGB15(24, 31, 20);
+    const u16 note_border = BIT(15) | RGB15(10, 16, 24);
     for (uint16_t i = 0; i < selected.event_count; ++i) {
         const NoteEvent& event = selected.events[i];
         if (event.end_ms <= composer_view_start_ms || event.start_ms >= view_end) continue;
         int left = composer_x_for_time(event.start_ms);
         int right = composer_x_for_time(event.end_ms);
-        loop_logic::ensure_note_visual_width(left, right, roll_left, roll_right);
+        loop_logic::ensure_note_visual_width(left, right, roll_left + 1, roll_right);
         int semitone = event.midi_note - pitch_low;
         if (semitone < 0) semitone = 0;
         if (semitone >= loop_logic::PITCH_WINDOW_SEMITONES)
             semitone = loop_logic::PITCH_WINDOW_SEMITONES - 1;
-        int note_y = lane_bottom - (semitone * lane_height) /
-            (loop_logic::PITCH_WINDOW_SEMITONES - 1);
+        int note_y = 134 - (semitone * 100) / (loop_logic::PITCH_WINDOW_SEMITONES - 1);
+        if (note_y < roll_top + 4) note_y = roll_top + 4;
+        if (note_y > roll_bottom - 4) note_y = roll_bottom - 4;
         bool is_selected = (int)i == composer_selected_note;
-        u16 fill = is_selected ? (BIT(15) | RGB15(24, 31, 20)) : green;
-        fill_rect(target, left + 1, note_y - 2, right - 1, note_y + 2, fill);
-        for (int x = left + 1; x < right; ++x) {
-            target[(note_y - 3) * 256 + x] = line;
-            target[(note_y + 3) * 256 + x] = line;
+        u16 fill = is_selected ? note_fill_sel : green;
+        fill_rect(target, left + 1, note_y - 3, right - 1, note_y + 3, fill);
+        draw_hollow_rect(target, left, note_y - 4, right, note_y + 4, note_border);
+        if (right - left >= 6) {
+            char pitch_lbl[4];
+            snprintf(pitch_lbl, sizeof(pitch_lbl), "%d", (int)event.midi_note % 12);
+            draw_text_bitmap(target, loop_logic::centered_note_label_x(left, right, event.midi_note),
+                             note_y - 2, pitch_lbl, panel, 1);
         }
     }
 
-    fill_rect(target, 0, COMPOSER_KEYBOARD_TOP, 255, 191, panel);
-    const u16 piano_white = BIT(15) | RGB15(5, 8, 14);
+    if (composer_keyboard_dragging && composer_keyboard_track >= 0 && composer_keyboard_key >= 0) {
+        uint32_t snap_start = grid.snap(composer_keyboard_drop_ms);
+        uint32_t snap_end = snap_start + pulse_ms;
+        int gleft = composer_x_for_time(snap_start);
+        int gright = composer_x_for_time(snap_end);
+        loop_logic::ensure_note_visual_width(gleft, gright, roll_left + 1, roll_right);
+        int drop_midi = loop_logic::midi_for_key(
+            octave + (composer_keyboard_row < 0 ? 0 : composer_keyboard_row),
+            composer_keyboard_key);
+        int semitone = drop_midi - pitch_low;
+        if (semitone < 0) semitone = 0;
+        if (semitone >= loop_logic::PITCH_WINDOW_SEMITONES)
+            semitone = loop_logic::PITCH_WINDOW_SEMITONES - 1;
+        int gy = 134 - (semitone * 100) / (loop_logic::PITCH_WINDOW_SEMITONES - 1);
+        draw_hollow_rect(target, gleft, gy - 4, gright, gy + 4, green);
+    }
+
+    uint32_t song_dur = song_duration_ms();
+    uint32_t play_ms = song_dur > 0 ? (transport_ms % song_dur) : (transport_ms % composer_view_ms);
+    if (play_ms >= composer_view_start_ms && play_ms <= view_end) {
+        int px = composer_x_for_time(play_ms);
+        if (px < roll_left) px = roll_left;
+        if (px > roll_right - 1) px = roll_right - 1;
+        int fl = px - 4 < roll_left ? roll_left : px - 4;
+        int fr = fl + 10 > 255 ? 255 : fl + 10;
+        fill_rect(target, fl, 15, fr, 26, green);
+        fill_rect(target, px, 27, px + 1, roll_bottom, green);
+    }
+
     const u16 piano_edge = BIT(15) | RGB15(14, 18, 24);
+    const u16 piano_white = BIT(15) | RGB15(5, 8, 14);
+    const u16 piano_sharp = BIT(15) | RGB15(3, 4, 8);
+    const u16 piano_sep = BIT(15) | RGB15(2, 3, 6);
+
+    if (detail_note_active && composer_selected_note >= 0 &&
+        composer_selected_note < selected.event_count) {
+        fill_rect(target, 0, COMPOSER_KEYBOARD_TOP, 255, 191, piano_sep);
+        for (int x = 0; x < 256; ++x) {
+            target[COMPOSER_KEYBOARD_TOP * 256 + x] = note_border;
+            target[155 * 256 + x] = note_border;
+            target[191 * 256 + x] = note_border;
+        }
+        draw_text_bitmap(target, 6, 146, "DETAIL 2P", green, 1);
+        draw_text_bitmap(target, 62, 146, "DRAG MOVE/LEN  A OK  B DEL", text, 1);
+
+        uint32_t detail_span = pulse_ms * 2u;
+        if (detail_span == 0) detail_span = 1000u;
+        int d_width = roll_right - roll_left;
+        for (int sub = 0; sub <= 8; ++sub) {
+            int gx = roll_left + (sub * d_width) / 8;
+            u16 gcol = (sub % 4 == 0) ? accent : ((sub % 2 == 0) ? beat : subdivision);
+            for (int gy = 156; gy <= 190; ++gy)
+                if ((sub % 4 == 0) || ((gy & 1) == 0)) target[gy * 256 + gx] = gcol;
+        }
+        const NoteEvent& ev = selected.events[composer_selected_note];
+        int nleft = roll_left + (int)(((int64_t)ev.start_ms - (int64_t)detail_view_start_ms) * d_width / (int64_t)detail_span);
+        int nright = roll_left + (int)(((int64_t)ev.end_ms - (int64_t)detail_view_start_ms) * d_width / (int64_t)detail_span);
+        if (nleft < roll_left) nleft = roll_left;
+        if (nright > roll_right) nright = roll_right;
+        if (nright < nleft + 6) nright = nleft + 6 <= roll_right ? nleft + 6 : roll_right;
+        fill_rect(target, nleft, 172, nright, 184, green);
+        draw_hollow_rect(target, nleft, 171, nright, 185, note_border);
+        fill_rect(target, nleft + 1, 172, nleft + 2, 184, text);
+        fill_rect(target, nright - 2, 172, nright - 1, 184, text);
+        char p_lbl[4];
+        snprintf(p_lbl, sizeof(p_lbl), "%d", (int)ev.midi_note % 12);
+        draw_text_bitmap(target, loop_logic::centered_note_label_x(nleft, nright, ev.midi_note),
+                         176, p_lbl, panel, 1);
+        return;
+    }
+
+    fill_rect(target, 0, COMPOSER_KEYBOARD_TOP, 255, 191, panel);
+    for (int x = 0; x < 256; ++x) {
+        target[COMPOSER_KEYBOARD_TOP * 256 + x] = piano_edge;
+        target[167 * 256 + x] = piano_edge;
+        target[191 * 256 + x] = piano_edge;
+    }
+    for (int y = COMPOSER_KEYBOARD_TOP + 1; y <= 190; ++y) {
+        if (y == 167) continue;
+        target[y * 256 + 8] = line;
+        target[y * 256 + roll_left] = piano_edge;
+    }
+    char top_oct_lbl[16];
+    char bot_oct_lbl[16];
+    snprintf(top_oct_lbl, sizeof(top_oct_lbl), "%d", octave + 1);
+    snprintf(bot_oct_lbl, sizeof(bot_oct_lbl), "%d", octave);
+    draw_text_bitmap(target, 3, 153, top_oct_lbl, text, 1);
+    draw_text_bitmap(target, 11, 153, "+", green, 1);
+    draw_text_bitmap(target, 3, 177, bot_oct_lbl, text, 1);
+    draw_text_bitmap(target, 11, 177, "-", green, 1);
+
+    int kb_span = 256 - roll_left;
     for (int row = 0; row < COMPOSER_KEYBOARD_ROWS; ++row) {
-        int top = COMPOSER_KEYBOARD_TOP + row * COMPOSER_KEYBOARD_ROW_STEP;
-        int bottom = top + COMPOSER_KEYBOARD_ROW_HEIGHT - 1;
+        int top = (row == 0) ? (COMPOSER_KEYBOARD_TOP + 1) : 168;
+        int bottom = (row == 0) ? 166 : 190;
+        int logical_row = 1 - row;
         for (int i = 0; i < KEY_COUNT; ++i) {
-            int left = (i * 256) / KEY_COUNT;
-            int right = ((i + 1) * 256) / KEY_COUNT - 1;
+            int left = roll_left + (i * kb_span) / KEY_COUNT;
+            int right = roll_left + ((i + 1) * kb_span) / KEY_COUNT - 1;
+            bool is_sharp = (i == 1 || i == 3 || i == 6 || i == 8 || i == 10);
+            u16 key_bg = is_sharp ? piano_sharp : piano_white;
             bool pressed_key = composer_keyboard_dragging &&
-                composer_keyboard_key == i && composer_keyboard_row == row;
-            fill_rect(target, left, top, right, bottom, pressed_key ? green : piano_white);
-            for (int y = top; y <= bottom; ++y) {
-                target[y * 256 + left] = piano_edge;
-                target[y * 256 + right] = piano_edge;
-            }
-            draw_note_label(i, left + ((right - left) - (i < 10 ? 6 : 14)) / 2,
-                            top + 5, pressed_key ? piano_white : text);
+                composer_keyboard_key == i && composer_keyboard_row == logical_row;
+            fill_rect(target, left, top, right, bottom, pressed_key ? green : key_bg);
+            u16 sep_col = (i == 0) ? piano_edge : piano_sep;
+            for (int y = top; y <= bottom; ++y)
+                target[y * 256 + left] = sep_col;
+            char k_lbl[4];
+            snprintf(k_lbl, sizeof(k_lbl), "%d", i);
+            int lw = (i < 10) ? 3 : 7;
+            int lx = left + 1 + ((right - left) - lw) / 2;
+            draw_text_bitmap(target, lx, top + 9, k_lbl, pressed_key ? key_bg : text, 1);
         }
     }
-    for (int x = 0; x < 256; ++x)
-        target[(COMPOSER_KEYBOARD_TOP + COMPOSER_KEYBOARD_ROW_HEIGHT) * 256 + x] = piano_edge;
 }
 
 static void draw_monitor_screen(u16* target) {
@@ -1478,6 +1747,13 @@ static void draw_monitor_screen(u16* target) {
     const u16 text = opaque | RGB15(31, 31, 31);
     const u16 accent = opaque | RGB15(20, 25, 31);
     const u16 green = opaque | RGB15(20, 31, 22);
+    if (focus_timeline) {
+        draw_text_bitmap(target, 9, 9, "LOW", text, 1);
+        draw_text_bitmap(target, 105, 9, "PITCH", green, 1);
+        draw_text_bitmap(target, 215, 9, "HIGH", text, 1);
+        draw_composer_touch_screen(target, panel, panel_alt, line, text, accent, green);
+        return;
+    }
     for (int y = 0; y < 192; ++y)
         for (int x = 0; x < 256; ++x) target[y * 256 + x] = background;
     fill_rect(target, 4, 4, 251, 25, panel);
@@ -1485,26 +1761,14 @@ static void draw_monitor_screen(u16* target) {
         target[4 * 256 + x] = line;
         target[25 * 256 + x] = line;
     }
-    if (focus_timeline) {
-        draw_text_bitmap(target, 9, 9, "LOW", text, 1);
-        draw_text_bitmap(target, 105, 9, "PITCH", green, 1);
-        draw_text_bitmap(target, 215, 9, "HIGH", text, 1);
-    } else {
-        draw_text_bitmap(target, 9, 9, "STYLOPHONE", text, 1);
-    }
+    draw_text_bitmap(target, 9, 9, "STYLOPHONE", text, 1);
     char header_hz[12];
     if (live_note >= 0) snprintf(header_hz, sizeof(header_hz), "HZ %d", note_frequency(live_note));
     else snprintf(header_hz, sizeof(header_hz), "HZ --");
     bool waiting_for_note = recording_armed;
-    if (!focus_timeline) {
-        draw_text_bitmap(target, 146, 9, header_hz, live_note >= 0 ? green : text, 1);
-        draw_text_bitmap(target, 178, 9, transport_finished ? "STOP" : (paused ? "PAUSED" : (recording ? "REC" : (recording_armed ? (waiting_for_note ? "WAIT" : "ARM") : "RUN"))),
-                         recording || recording_armed ? green : text, 1);
-    }
-    if (focus_timeline) {
-        draw_composer_touch_screen(target, panel, panel_alt, line, text, accent, green);
-        return;
-    }
+    draw_text_bitmap(target, 146, 9, header_hz, live_note >= 0 ? green : text, 1);
+    draw_text_bitmap(target, 178, 9, transport_finished ? "STOP" : (paused ? "PAUSED" : (recording ? "REC" : (recording_armed ? (waiting_for_note ? "WAIT" : "ARM") : "RUN"))),
+                     recording || recording_armed ? green : text, 1);
     uint32_t total_duration = song_duration_ms();
     for (int i = 0; i < TRACKS; ++i) {
         int y = TRACK_ROW_TOP + i * TRACK_ROW_STEP;
@@ -1595,6 +1859,81 @@ static void draw_top(bool show_help) {
         for (int x = 0; x < 256; ++x)
             top_bitmap[y * 256 + x] = background;
 
+    if (recording && recording_target != nullptr) {
+        recording_target->occupied = true;
+        recording_target->duration_ms = (uint32_t)(now_ms() - record_start);
+        if (recording_target->duration_ms == 0) recording_target->duration_ms = 1;
+    }
+
+    if (focus_timeline) {
+        fill_rect(top_bitmap, 4, 4, 251, 14, panel);
+        for (int x = 4; x <= 251; ++x) {
+            top_bitmap[4 * 256 + x] = line;
+            top_bitmap[14 * 256 + x] = line;
+        }
+        draw_text_bitmap(top_bitmap, 6, 7, "COMPOSER", text, 1);
+        draw_text_bitmap(top_bitmap, 68, 7, "TRK", green, 1);
+        char trk_digit[16];
+        snprintf(trk_digit, sizeof(trk_digit), "%d", selected_track + 1);
+        draw_text_bitmap(top_bitmap, 88, 7, trk_digit, text, 1);
+        draw_text_bitmap(top_bitmap, 100, 7, paused ? "||" : ">", paused ? accent : green, 1);
+
+        if (show_help) {
+            fill_rect(top_bitmap, 4, 30, 251, 188, panel);
+            draw_hollow_rect(top_bitmap, 4, 30, 251, 188, line);
+            draw_text_bitmap(top_bitmap, 10, 35, "CONTROLS", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 45, "ARROWS TRACK/NOTE/MOVE", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 55, "SELECT HOLD HELP", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 65, "SELECT TAP MUTE", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 75, "START PLAY/PAUSE", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 85, "A REC / ACCEPT DETAIL", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 95, "B DELETE NOTE", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 105, "TOUCH 0-11 DRAG TO ROLL", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 115, "TOUCH +/- OCTAVE", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 125, "TOUCH NOTE OPEN DETAIL 2P", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 135, "DETAIL DRAG MOVE/RESIZE", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 145, "EMPTY TOUCH: KEYBOARD", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 155, "X TIMBRE  Y LOOP", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 165, "L+B UNDO  R+B CLEAR", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 175, "NUMBERS ONLY", green, 1);
+            dmaCopy(top_framebuffer, top_vram, 256 * 192 * sizeof(u16));
+            return;
+        }
+
+        draw_composer_timeline(top_bitmap, panel, panel_alt, line, text, accent, green, false, false);
+
+        fill_rect(top_bitmap, 4, 155, 251, 167, panel);
+        for (int x = 4; x <= 251; ++x) {
+            top_bitmap[155 * 256 + x] = line;
+            top_bitmap[167 * 256 + x] = line;
+        }
+        draw_text_bitmap(top_bitmap, 9, 159, "DIARY", text, 1);
+        char diary_text[96] = {};
+        int d_start = journal_count > 10 ? journal_count - 10 : 0;
+        int d_cursor = 0;
+        if (d_start > 0) d_cursor += snprintf(diary_text + d_cursor, sizeof(diary_text) - d_cursor, "... ");
+        for (int i = d_start; i < journal_count && d_cursor < (int)sizeof(diary_text) - 8; ++i) {
+            if (i > d_start) d_cursor += snprintf(diary_text + d_cursor, sizeof(diary_text) - d_cursor, " ");
+            d_cursor += snprintf(diary_text + d_cursor, sizeof(diary_text) - d_cursor, "%d", (int)journal_values[i]);
+        }
+        if (journal_count > 0)
+            draw_text_bitmap(top_bitmap, 37, 159, diary_text,
+                             now_ms() < journal_flash_until ? green : text, 1);
+
+        fill_rect(top_bitmap, 4, 171, 251, 184, panel);
+        for (int x = 4; x <= 251; ++x) {
+            top_bitmap[171 * 256 + x] = line;
+            top_bitmap[184 * 256 + x] = line;
+        }
+        char pulse_text[48];
+        snprintf(pulse_text, sizeof(pulse_text), "PULSE %lu S  %s  VIB %u  SUS %u",
+                 (unsigned long)pulse_ms, loop_enabled ? "LOOP" : "ONCE",
+                 (unsigned)vibrato_depth_level, (unsigned)(sustain_release_level + 1));
+        draw_text_bitmap(top_bitmap, 9, 175, pulse_text, text, 1);
+        dmaCopy(top_framebuffer, top_vram, 256 * 192 * sizeof(u16));
+        return;
+    }
+
     fill_rect(top_bitmap, 4, 4, 251, 25, panel);
     for (int x = 4; x <= 251; ++x) {
         top_bitmap[4 * 256 + x] = line;
@@ -1608,30 +1947,6 @@ static void draw_top(bool show_help) {
     bool waiting_for_note = recording_armed;
     draw_text_bitmap(top_bitmap, 178, 9, transport_finished ? "STOP" : (paused ? "PAUSED" : (recording ? "REC" : (recording_armed ? (waiting_for_note ? "WAIT" : "ARM") : "RUN"))),
                      recording || recording_armed ? green : text, 1);
-
-    if (recording && recording_target != nullptr) {
-        recording_target->occupied = true;
-        recording_target->duration_ms = (uint32_t)(now_ms() - record_start);
-        if (recording_target->duration_ms == 0) recording_target->duration_ms = 1;
-    }
-
-    if (focus_timeline) {
-        fill_rect(top_bitmap, 4, 4, 251, 25, panel);
-        draw_text_bitmap(top_bitmap, 9, 9, "COMPOSER", text, 1);
-        char composer_header[24];
-        snprintf(composer_header, sizeof(composer_header), "TRK %d", selected_track + 1);
-        draw_text_bitmap(top_bitmap, 70, 9, composer_header, text, 1);
-        draw_composer_timeline(top_bitmap, panel, panel_alt, line, text, accent, green, false, false);
-        fill_rect(top_bitmap, 4, 151, 251, 188, panel);
-        draw_text_bitmap(top_bitmap, 9, 155, "DIARY", text, 1);
-        char pulse_text[48];
-        snprintf(pulse_text, sizeof(pulse_text), "PULSE %lu  LOOP %s  VIB %d  SUS %d",
-                 (unsigned long)pulse_ms, loop_enabled ? "ON" : "OFF",
-                 vibrato_depth_level, sustain_release_level);
-        draw_text_bitmap(top_bitmap, 9, 175, pulse_text, text, 1);
-        dmaCopy(top_framebuffer, top_vram, 256 * 192 * sizeof(u16));
-        return;
-    }
 
     if (trim_active) {
         char trim_text[32];
@@ -1647,20 +1962,20 @@ static void draw_top(bool show_help) {
     if (show_help) {
         fill_rect(top_bitmap, 4, 30, 251, 188, panel);
         draw_text_bitmap(top_bitmap, 10, 35, "CONTROLS", text, 1);
-        draw_text_bitmap(top_bitmap, 10, 44, "ARROWS OCT TRACK", text, 1);
-        draw_text_bitmap(top_bitmap, 10, 53, "A REC", text, 1);
-        draw_text_bitmap(top_bitmap, 10, 62, "B DELETE", text, 1);
-        draw_text_bitmap(top_bitmap, 10, 71, "B HOLD CLEAR", text, 1);
-        draw_text_bitmap(top_bitmap, 10, 80, "X TIMBRE", text, 1);
-        draw_text_bitmap(top_bitmap, 10, 89, "Y LOOP", text, 1);
-        draw_text_bitmap(top_bitmap, 10, 98, "Y LOOP ON OFF", text, 1);
-        draw_text_bitmap(top_bitmap, 10, 107, "FX PULSE VIB SUS", text, 1);
-        draw_text_bitmap(top_bitmap, 10, 116, "R CLICK ON OFF", text, 1);
-        draw_text_bitmap(top_bitmap, 10, 125, "VIB 0 OFF L SUS", text, 1);
-        draw_text_bitmap(top_bitmap, 10, 134, "START PLAY/PAUSE", text, 1);
-        draw_text_bitmap(top_bitmap, 10, 143, "SEL MUTE HOLD PHRASE", text, 1);
-        draw_text_bitmap(top_bitmap, 10, 152, "L+B UNDO R+B CLEAR", text, 1);
-        draw_text_bitmap(top_bitmap, 10, 163, "NUMBERS ONLY", green, 1);
+        draw_text_bitmap(top_bitmap, 10, 45, "ARROWS TRACK/NOTE/MOVE", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 55, "SELECT HOLD HELP", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 65, "SELECT TAP MUTE", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 75, "START PLAY/PAUSE", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 85, "A REC / ACCEPT DETAIL", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 95, "B DELETE NOTE", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 105, "TOUCH 0-11 DRAG TO ROLL", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 115, "TOUCH +/- OCTAVE", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 125, "TOUCH NOTE OPEN DETAIL 2P", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 135, "DETAIL DRAG MOVE/RESIZE", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 145, "EMPTY TOUCH: KEYBOARD", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 155, "X TIMBRE  Y LOOP", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 165, "L+B UNDO  R+B CLEAR", text, 1);
+        draw_text_bitmap(top_bitmap, 10, 175, "NUMBERS ONLY", green, 1);
         dmaCopy(top_framebuffer, top_vram, 256 * 192 * sizeof(u16));
         return;
     }
@@ -1752,15 +2067,19 @@ static const uint8_t* glyph(char c) {
         {'A', 7, 5, 7, 5, 5}, {'B', 6, 5, 6, 5, 6}, {'C', 7, 4, 4, 4, 7},
         {'D', 6, 5, 5, 5, 6}, {'E', 7, 4, 6, 4, 7}, {'F', 7, 4, 6, 4, 4},
         {'G', 7, 4, 5, 5, 7}, {'H', 5, 5, 7, 5, 5}, {'I', 7, 2, 2, 2, 7},
-        {'K', 5, 5, 6, 5, 5}, {'L', 4, 4, 4, 4, 7}, {'M', 5, 7, 7, 5, 5}, {'N', 5, 7, 7, 7, 5},
-        {'O', 7, 5, 5, 5, 7}, {'P', 6, 5, 6, 4, 4}, {'Q', 7, 5, 7, 2, 1},
-        {'R', 6, 5, 6, 5, 5}, {'S', 7, 4, 7, 1, 7}, {'T', 7, 2, 2, 2, 2},
-        {'U', 5, 5, 5, 5, 7}, {'V', 5, 5, 5, 5, 2}, {'W', 5, 7, 7, 7, 5}, {'0', 7, 5, 5, 5, 7},
-        {'1', 2, 6, 2, 2, 7}, {'2', 6, 1, 2, 4, 7}, {'3', 6, 1, 6, 1, 6},
-        {'4', 5, 5, 7, 1, 1}, {'5', 7, 4, 6, 1, 6}, {'6', 3, 4, 7, 5, 7},
-        {'7', 7, 1, 2, 2, 2}, {'8', 7, 5, 7, 5, 7}, {'9', 7, 5, 7, 1, 6},
-        {'Y', 5, 5, 2, 2, 2}, {'|', 2, 2, 2, 2, 2},
-        {'Z', 7, 1, 2, 4, 7}, {'-', 0, 0, 7, 0, 0}, {'#', 5, 7, 5, 7, 5}
+        {'J', 1, 1, 1, 5, 2}, {'K', 5, 5, 6, 5, 5}, {'L', 4, 4, 4, 4, 7},
+        {'M', 5, 7, 7, 5, 5}, {'N', 5, 7, 7, 7, 5}, {'O', 7, 5, 5, 5, 7},
+        {'P', 6, 5, 6, 4, 4}, {'Q', 7, 5, 7, 2, 1}, {'R', 6, 5, 6, 5, 5},
+        {'S', 7, 4, 7, 1, 7}, {'T', 7, 2, 2, 2, 2}, {'U', 5, 5, 5, 5, 7},
+        {'V', 5, 5, 5, 5, 2}, {'W', 5, 7, 7, 7, 5}, {'X', 5, 5, 2, 5, 5},
+        {'Y', 5, 5, 2, 2, 2}, {'Z', 7, 1, 2, 4, 7},
+        {'0', 7, 5, 5, 5, 7}, {'1', 2, 6, 2, 2, 7}, {'2', 6, 1, 2, 4, 7},
+        {'3', 6, 1, 6, 1, 6}, {'4', 5, 5, 7, 1, 1}, {'5', 7, 4, 6, 1, 6},
+        {'6', 3, 4, 7, 5, 7}, {'7', 7, 1, 2, 2, 2}, {'8', 7, 5, 7, 5, 7},
+        {'9', 7, 5, 7, 1, 6},
+        {'|', 2, 2, 2, 2, 2}, {'-', 0, 0, 7, 0, 0}, {'+', 0, 2, 7, 2, 0},
+        {'/', 1, 1, 2, 4, 4}, {':', 0, 2, 0, 2, 0}, {'.', 0, 0, 0, 0, 2},
+        {'>', 4, 6, 7, 6, 4}, {'#', 5, 7, 5, 7, 5}
     };
     for (unsigned i = 0; i < sizeof(glyphs) / sizeof(glyphs[0]); ++i)
         if (glyphs[i][0] == (uint8_t)c) return &glyphs[i][1];
@@ -1772,8 +2091,12 @@ static void draw_glyph_bitmap(u16* target, int x, int y, const uint8_t* rows, u1
         for (int col = 0; col < 3; ++col)
             if (rows[row] & (1 << (2 - col)))
                 for (int dy = 0; dy < scale; ++dy)
-                    for (int dx = 0; dx < scale; ++dx)
-                        target[(y + row * scale + dy) * 256 + x + col * scale + dx] = color;
+                    for (int dx = 0; dx < scale; ++dx) {
+                        int px = x + col * scale + dx;
+                        int py = y + row * scale + dy;
+                        if (px >= 0 && px < 256 && py >= 0 && py < 192)
+                            target[py * 256 + px] = color;
+                    }
 }
 
 static void draw_text_bitmap(u16* target, int x, int y, const char* text, u16 color, int scale) {
@@ -1895,7 +2218,7 @@ static void draw_startup(StartupScreen screen, int selected,
             if (row == 5) break;
         }
         if (row == 0) draw_text_bitmap(bottom_bitmap, 42, 78, "NO SONGS", text, 2);
-        draw_text_bitmap(bottom_bitmap, 12, 170, "TOUCH/A LOAD  HOLD B DELETE", text, 1);
+        draw_text_bitmap(bottom_bitmap, 12, 170, "TOUCH/A LOAD  B BACK  HOLD B DELETE", text, 1);
     } else {
         draw_text_bitmap(bottom_bitmap, 20, 18, "DRAW A NAME", text, 2);
         fill_rect(bottom_bitmap, 28, 58, 227, 87, panel);
@@ -1925,6 +2248,9 @@ static bool startup_flow() {
     uint32_t library_b_started = 0;
     bool library_b_pending = false;
     bool library_b_deleted = false;
+    bool label_drawing = false;
+    int last_label_x = -1;
+    int last_label_y = -1;
     while (true) {
         int visual_selection = screen == STARTUP_LIBRARY ? selected : selected;
         draw_startup(screen, visual_selection, valid);
@@ -1951,6 +2277,9 @@ static bool startup_flow() {
                     active_song_id = first_free_song_id(valid);
                     active_song = {};
                     active_song.pulse_ms = DEFAULT_PULSE_MS;
+                    label_drawing = false;
+                    last_label_x = -1;
+                    last_label_y = -1;
                     screen = STARTUP_LABEL;
                 }
             }
@@ -1994,23 +2323,36 @@ static bool startup_flow() {
                 }
             }
         } else {
-            if (pressed & KEY_B) { screen = STARTUP_CHOICE; continue; }
-            if (pressed & KEY_X) active_song.label = {};
+            if (pressed & KEY_B) { screen = STARTUP_CHOICE; label_drawing = false; continue; }
+            if (pressed & KEY_X) { active_song.label = {}; label_drawing = false; }
             if (pressed & KEY_A) {
                 song_storage::ensure_default_label(active_song);
                 sync_memory_from_song();
                 persist_active_song();
                 return true;
             }
-            if (keysHeld() & KEY_TOUCH && touch.px >= 28 && touch.px <= 227 &&
+            if ((keysHeld() & KEY_TOUCH) && touch.px >= 28 && touch.px <= 227 &&
                 touch.py >= 58 && touch.py <= 87) {
                 int x = touch.px - 32;
                 int y = touch.py - 62;
-                if (x >= 0 && x < song_storage::LABEL_WIDTH && y >= 0 && y < song_storage::LABEL_HEIGHT) {
-                    active_song.label.width = song_storage::LABEL_WIDTH;
-                    active_song.label.height = song_storage::LABEL_HEIGHT;
+                if (x < 0) x = 0;
+                if (x >= song_storage::LABEL_WIDTH) x = song_storage::LABEL_WIDTH - 1;
+                if (y < 0) y = 0;
+                if (y >= song_storage::LABEL_HEIGHT) y = song_storage::LABEL_HEIGHT - 1;
+                active_song.label.width = song_storage::LABEL_WIDTH;
+                active_song.label.height = song_storage::LABEL_HEIGHT;
+                if (label_drawing && last_label_x >= 0 && last_label_y >= 0) {
+                    song_storage::draw_label_segment(active_song.label, last_label_x, last_label_y, x, y);
+                } else {
                     song_storage::draw_label_segment(active_song.label, x, y, x, y);
                 }
+                last_label_x = x;
+                last_label_y = y;
+                label_drawing = true;
+            } else {
+                label_drawing = false;
+                last_label_x = -1;
+                last_label_y = -1;
             }
         }
     }
@@ -2233,7 +2575,10 @@ static void draw_bottom(int key) {
         return;
     }
     if (focus_timeline) {
-        draw_phrase_picker();
+        if (bottom_needs_redraw || top_render_divider != 0) {
+            draw_phrase_picker();
+            bottom_needs_redraw = false;
+        }
         return;
     }
     int desired_key = key >= 0 ? key : playback_key;
@@ -2284,6 +2629,8 @@ int main() {
         song_storage::ensure_default_label(active_song);
         sync_memory_from_song();
     }
+    scanKeys();
+    previous_buttons = keysHeld();
     previous_ms = now_ms();
 #ifdef __BLOCKSDS__
     while (1) {
@@ -2348,6 +2695,12 @@ int main() {
                     DS_TRACE("DSDBG|NOTE_PITCH|track=%d|event=%d|midi=%d\n",
                              selected_track, composer_selected_note, event.midi_note);
                 }
+            } else if (focus_timeline) {
+                selected_track = loop_logic::wrap_track(selected_track, -1);
+                composer_selected_note = -1;
+                detail_note_active = false;
+                phrase_picker_selected = -1;
+                bottom_needs_redraw = true;
             } else if (octave < 6) ++octave;
         }
         if (!trim_active && (pressed & KEY_DOWN)) {
@@ -2366,28 +2719,75 @@ int main() {
                     DS_TRACE("DSDBG|NOTE_PITCH|track=%d|event=%d|midi=%d\n",
                              selected_track, composer_selected_note, event.midi_note);
                 }
+            } else if (focus_timeline) {
+                selected_track = loop_logic::wrap_track(selected_track, 1);
+                composer_selected_note = -1;
+                detail_note_active = false;
+                phrase_picker_selected = -1;
+                bottom_needs_redraw = true;
             } else if (octave > 2) --octave;
         }
         if (trim_active && (pressed & KEY_UP) && trim_repeat_count < 99) ++trim_repeat_count;
         if (trim_active && (pressed & KEY_DOWN) && trim_repeat_count > 1) --trim_repeat_count;
         if (!trim_active && !(held & KEY_TOUCH) && !(held & KEY_L)) {
             if (pressed & KEY_LEFT) {
-                selected_track = loop_logic::wrap_track(selected_track, -1);
-                composer_selected_note = -1;
-                if (focus_timeline) phrase_picker_selected = -1;
-                if (held & KEY_Y) loop_button_direction_used = true;
+                if (focus_timeline && composer_selected_note >= 0 &&
+                    composer_selected_note < tracks[selected_track].event_count) {
+                    NoteEvent& ev = tracks[selected_track].events[composer_selected_note];
+                    uint32_t step_ms = pulse_ms / 4u > 0 ? pulse_ms / 4u : 125u;
+                    uint32_t req = ev.start_ms > step_ms ? ev.start_ms - step_ms : 0;
+                    if (loop_logic::edit_note_event(tracks[selected_track],
+                                                    (uint16_t)composer_selected_note,
+                                                    loop_logic::NOTE_MOVE, req, 0,
+                                                    COMPOSER_CONTENT_LIMIT_MS, pulse_ms, true)) {
+                        update_detail_view_for_note(ev);
+                        persist_active_song();
+                        bottom_needs_redraw = true;
+                        DS_TRACE("DSDBG|NOTE_NUDGE|track=%d|event=%d|start=%lu|end=%lu\n",
+                                 selected_track, composer_selected_note,
+                                 (unsigned long)ev.start_ms, (unsigned long)ev.end_ms);
+                    }
+                } else {
+                    selected_track = loop_logic::wrap_track(selected_track, -1);
+                    composer_selected_note = -1;
+                    detail_note_active = false;
+                    if (focus_timeline) phrase_picker_selected = -1;
+                    bottom_needs_redraw = true;
+                    if (held & KEY_Y) loop_button_direction_used = true;
+                }
             }
             if (pressed & KEY_RIGHT) {
-                selected_track = loop_logic::wrap_track(selected_track, 1);
-                composer_selected_note = -1;
-                if (focus_timeline) phrase_picker_selected = -1;
-                if (held & KEY_Y) loop_button_direction_used = true;
+                if (focus_timeline && composer_selected_note >= 0 &&
+                    composer_selected_note < tracks[selected_track].event_count) {
+                    NoteEvent& ev = tracks[selected_track].events[composer_selected_note];
+                    uint32_t step_ms = pulse_ms / 4u > 0 ? pulse_ms / 4u : 125u;
+                    uint32_t req = ev.start_ms + step_ms;
+                    if (loop_logic::edit_note_event(tracks[selected_track],
+                                                    (uint16_t)composer_selected_note,
+                                                    loop_logic::NOTE_MOVE, req, 0,
+                                                    COMPOSER_CONTENT_LIMIT_MS, pulse_ms, true)) {
+                        if (tracks[selected_track].duration_ms < ev.end_ms)
+                            tracks[selected_track].duration_ms =
+                                loop_logic::snap_loop_duration(ev.end_ms, pulse_ms);
+                        update_detail_view_for_note(ev);
+                        persist_active_song();
+                        bottom_needs_redraw = true;
+                        DS_TRACE("DSDBG|NOTE_NUDGE|track=%d|event=%d|start=%lu|end=%lu\n",
+                                 selected_track, composer_selected_note,
+                                 (unsigned long)ev.start_ms, (unsigned long)ev.end_ms);
+                    }
+                } else {
+                    selected_track = loop_logic::wrap_track(selected_track, 1);
+                    composer_selected_note = -1;
+                    detail_note_active = false;
+                    if (focus_timeline) phrase_picker_selected = -1;
+                    bottom_needs_redraw = true;
+                    if (held & KEY_Y) loop_button_direction_used = true;
+                }
             }
         }
         if (pressed & KEY_START) {
-            if (focus_timeline) {
-                // Phrase picker is a structural screen; transport stays unchanged.
-            } else if (trim_active) {
+            if (trim_active) {
                 reset_trim_preview_audio();
                 trim_preview_playing = !trim_preview_playing;
                 trim_preview_started_ms = now_ms();
@@ -2402,6 +2802,7 @@ int main() {
                 paused = !paused;
                 if (paused) update_loops();
                 else transport_finished = false;
+                bottom_needs_redraw = true;
             }
         }
         if (!trim_active && (pressed & KEY_SELECT) && !select_pending) {
@@ -2409,26 +2810,27 @@ int main() {
             select_pending = true;
             select_help_active = false;
         }
-        if (select_pending && now - select_hold_started >= HOLD_MS && !select_help_active) {
+        if (select_pending && (held & KEY_SELECT) && now - select_hold_started >= HOLD_MS && !select_help_active) {
             select_help_active = true;
-            focus_timeline = !focus_timeline;
-            if (focus_timeline) {
-                composer_pitch_window_octave = octave;
-                composer_pitch_window_low = loop_logic::pitch_window_low_midi(octave);
-            }
-            phrase_picker_selected = -1;
             bottom_needs_redraw = true;
-            DS_TRACE("DSDBG|PHRASE_PICKER|enabled=%d\n", focus_timeline ? 1 : 0);
+            DS_TRACE("DSDBG|SELECT_HELP|enabled=1\n");
         }
         if ((released & KEY_SELECT) && select_pending) {
             if (!select_help_active) {
                 tracks[selected_track].muted = !tracks[selected_track].muted;
                 persist_active_song();
+                bottom_needs_redraw = true;
+            } else {
+                DS_TRACE("DSDBG|SELECT_HELP|enabled=0\n");
             }
             select_pending = false;
             select_help_active = false;
         }
-        if (!trim_active && (pressed & KEY_X)) { timbre = (timbre + 1) % INSTRUMENTS; refresh_live_timbre(); }
+        if (!trim_active && (pressed & KEY_X)) {
+            timbre = (timbre + 1) % INSTRUMENTS;
+            refresh_live_timbre();
+            bottom_needs_redraw = true;
+        }
         if ((pressed & KEY_R) && !(held & KEY_B)) {
             metronome_enabled = !metronome_enabled;
             if (!metronome_enabled) stop_metronome_voice();
@@ -2463,30 +2865,43 @@ int main() {
         if (pressed & KEY_A) {
             if (trim_active) accept_trim();
             else if (recording) stop_recording(now);
-            else if (focus_timeline && composer_selected_note >= 0 &&
-                     composer_selected_note < tracks[selected_track].event_count)
+            else if (focus_timeline && detail_note_active) {
+                detail_note_active = false;
+                bottom_needs_redraw = true;
+                DS_TRACE("DSDBG|NOTE_EDIT_CLOSE|track=%d|event=%d\n",
+                         selected_track, composer_selected_note);
+            } else if (focus_timeline && composer_selected_note >= 0 &&
+                       composer_selected_note < tracks[selected_track].event_count) {
                 open_direct_note_editor((uint16_t)composer_selected_note);
-            else if (!focus_timeline) start_recording(now);
+            } else if (!focus_timeline) {
+                start_recording(now);
+            }
         }
         if (trim_active && (pressed & KEY_B)) cancel_trim();
         if (focus_timeline && (pressed & KEY_B)) {
-            if (composer_selected_note >= 0 &&
-                composer_selected_note < tracks[selected_track].event_count) {
+            if (held & KEY_L) {
+                undo_recording();
+                composer_selected_note = -1;
+                detail_note_active = false;
+                bottom_needs_redraw = true;
+            } else if (held & KEY_R) {
+                clear_selected();
+                composer_selected_note = -1;
+                detail_note_active = false;
+                bottom_needs_redraw = true;
+            } else if (composer_selected_note >= 0 &&
+                       composer_selected_note < tracks[selected_track].event_count) {
                 Track& target = tracks[selected_track];
                 int deleted = composer_selected_note;
                 if (loop_logic::delete_note_event(target, (uint16_t)deleted)) {
                     composer_selected_note = -1;
+                    detail_note_active = false;
                     phrase_picker_selected = -1;
                     persist_active_song();
                     bottom_needs_redraw = true;
                     DS_TRACE("DSDBG|NOTE_DELETE|track=%d|event=%d|count=%u\n",
                              selected_track, deleted, (unsigned)target.event_count);
                 }
-            } else {
-                focus_timeline = false;
-                phrase_picker_selected = -1;
-                composer_selected_note = -1;
-                bottom_needs_redraw = true;
             }
         } else if (!trim_active && !focus_timeline && (pressed & KEY_B) && !b_hold_clear) {
             b_hold_started = now;
@@ -2608,66 +3023,88 @@ int main() {
                 trim_touch_editing = false;
                 trim_touch_free_changed = false;
             }
+        } else if (focus_timeline && composer_ruler_seeking && (held & KEY_TOUCH)) {
+            if (touch.px >= loop_logic::COMPOSER_TIMELINE_LEFT_X) {
+                transport_ms = composer_time_for_x(touch.px);
+                timeline_selection.cursor_ms = transport_ms;
+                bottom_needs_redraw = true;
+                DS_TRACE("DSDBG|SEEK_RULER|transport=%lu\n", (unsigned long)transport_ms);
+            }
+        } else if (focus_timeline && composer_ruler_seeking && !(held & KEY_TOUCH)) {
+            composer_ruler_seeking = false;
         } else if (focus_timeline && composer_dragging_note && (held & KEY_TOUCH)) {
             if (composer_selected_note >= 0 &&
                 composer_selected_note < tracks[selected_track].event_count &&
                 touch.px >= loop_logic::COMPOSER_TIMELINE_LEFT_X &&
                 touch.px <= loop_logic::COMPOSER_TIMELINE_RIGHT_X) {
-                uint32_t current_ms = composer_time_for_x(touch.px);
-                int64_t requested = (int64_t)composer_drag_original_start_ms +
+                uint32_t current_ms = 0;
+                if (detail_note_active && touch.py >= COMPOSER_KEYBOARD_TOP) {
+                    uint32_t detail_span = pulse_ms * 2u > 0 ? pulse_ms * 2u : 1000u;
+                    int d_width = loop_logic::COMPOSER_TIMELINE_RIGHT_X - loop_logic::COMPOSER_TIMELINE_LEFT_X;
+                    current_ms = detail_view_start_ms +
+                        (uint32_t)(((uint64_t)(touch.px - loop_logic::COMPOSER_TIMELINE_LEFT_X) * detail_span) /
+                                   (uint32_t)d_width);
+                } else {
+                    current_ms = composer_time_for_x(touch.px);
+                }
+                uint32_t base_ms = (composer_edit_mode == loop_logic::NOTE_END)
+                    ? composer_drag_original_end_ms : composer_drag_original_start_ms;
+                int64_t requested = (int64_t)base_ms +
                     (int64_t)current_ms - (int64_t)composer_drag_origin_ms;
                 if (requested < 0) requested = 0;
                 if (loop_logic::edit_note_event(
                         tracks[selected_track], (uint16_t)composer_selected_note,
-                        loop_logic::NOTE_MOVE, (uint32_t)requested, 0,
+                        composer_edit_mode, (uint32_t)requested, 0,
                         COMPOSER_CONTENT_LIMIT_MS, pulse_ms, false)) {
+                    NoteEvent& ev = tracks[selected_track].events[composer_selected_note];
+                    if (tracks[selected_track].duration_ms < ev.end_ms)
+                        tracks[selected_track].duration_ms =
+                            loop_logic::snap_loop_duration(ev.end_ms, pulse_ms);
                     composer_drag_changed = true;
                     bottom_needs_redraw = true;
                     DS_TRACE("DSDBG|NOTE_NUDGE|track=%d|event=%d|start=%lu|end=%lu\n",
                              selected_track, composer_selected_note,
-                             (unsigned long)tracks[selected_track].events[composer_selected_note].start_ms,
-                             (unsigned long)tracks[selected_track].events[composer_selected_note].end_ms);
+                             (unsigned long)ev.start_ms,
+                             (unsigned long)ev.end_ms);
                 }
             }
         } else if (focus_timeline && composer_dragging_note && !(held & KEY_TOUCH)) {
             if (composer_drag_changed && composer_selected_note >= 0 &&
                 composer_selected_note < tracks[selected_track].event_count) {
                 NoteEvent& event = tracks[selected_track].events[composer_selected_note];
-                uint32_t requested = loop_logic::PulseGrid{pulse_ms}.snap(event.start_ms);
+                uint32_t raw_target = (composer_edit_mode == loop_logic::NOTE_END)
+                    ? event.end_ms : event.start_ms;
+                uint32_t requested = loop_logic::PulseGrid{pulse_ms}.snap(raw_target);
                 if (loop_logic::edit_note_event(
                         tracks[selected_track], (uint16_t)composer_selected_note,
-                        loop_logic::NOTE_MOVE, requested, 0,
+                        composer_edit_mode, requested, 0,
                         COMPOSER_CONTENT_LIMIT_MS, pulse_ms, true)) {
-                    persist_active_song();
+                    if (tracks[selected_track].duration_ms < event.end_ms)
+                        tracks[selected_track].duration_ms =
+                            loop_logic::snap_loop_duration(event.end_ms, pulse_ms);
                 }
+                persist_active_song();
             }
             composer_dragging_note = false;
             composer_drag_changed = false;
             bottom_needs_redraw = true;
-        } else if (focus_timeline && composer_pitch_panning && (held & KEY_TOUCH) &&
-                   touch.py >= COMPOSER_TRACK_TOP &&
-                   touch.py < COMPOSER_TRACK_TOP + COMPOSER_TRACK_ROW * TRACKS) {
-            int delta = (int)touch.py - composer_pitch_pan_origin_y;
+        } else if (focus_timeline && composer_pitch_panning && (held & KEY_TOUCH)) {
+            int delta_y = (int)touch.py - composer_pitch_pan_origin_y;
             composer_pitch_window_low = loop_logic::clamp_pitch_window_low(
-                composer_pitch_pan_origin_low + delta);
+                composer_pitch_pan_origin_low + (delta_y * 24) / 80);
             bottom_needs_redraw = true;
         } else if (focus_timeline && composer_pitch_panning && !(held & KEY_TOUCH)) {
             composer_pitch_panning = false;
-            DS_TRACE("DSDBG|PITCH_PAN|low=%d\n", composer_pitch_window_low);
+            DS_TRACE("DSDBG|PITCH_PAN|track=%d|low=%d\n", selected_track, composer_pitch_window_low);
         } else if (focus_timeline && composer_keyboard_dragging && (held & KEY_TOUCH)) {
             if (touch.py >= COMPOSER_KEYBOARD_TOP && touch.py < 192) {
-                composer_keyboard_key = loop_logic::key_for_x(touch.px);
-                composer_keyboard_row = (touch.py - COMPOSER_KEYBOARD_TOP) /
-                    COMPOSER_KEYBOARD_ROW_STEP;
+                composer_keyboard_track = -1;
                 key = composer_keyboard_key;
-            } else if (touch.py >= COMPOSER_TRACK_TOP &&
-                       touch.py < COMPOSER_TRACK_TOP + COMPOSER_TRACK_ROW * TRACKS &&
-                       loop_logic::timeline_x_is_valid(touch.px)) {
-                composer_keyboard_track = composer_track_index_for_y(touch.py);
-                if (composer_keyboard_track >= 0) {
-                    selected_track = composer_keyboard_track;
-                    composer_keyboard_drop_ms = composer_time_for_x(touch.px);
-                }
+            } else if (touch.py >= 28 && touch.py < COMPOSER_KEYBOARD_TOP &&
+                       touch.px >= loop_logic::COMPOSER_TIMELINE_LEFT_X) {
+                composer_keyboard_track = selected_track;
+                composer_keyboard_drop_ms = composer_time_for_x(touch.px);
+                key = composer_keyboard_key;
             }
             bottom_needs_redraw = true;
         } else if (focus_timeline && composer_keyboard_dragging && !(held & KEY_TOUCH)) {
@@ -2688,9 +3125,15 @@ int main() {
             composer_keyboard_row = -1;
             bottom_needs_redraw = true;
         } else if (focus_timeline && (pressed & KEY_TOUCH)) {
-            if (touch.py >= COMPOSER_TRACK_TOP &&
-                touch.py < COMPOSER_TRACK_TOP + COMPOSER_TRACK_ROW * TRACKS &&
-                touch.px < loop_logic::COMPOSER_TIMELINE_LEFT_X) {
+            if (touch.py >= COMPOSER_RULER_TOP && touch.py <= COMPOSER_RULER_BOTTOM &&
+                touch.px >= loop_logic::COMPOSER_TIMELINE_LEFT_X) {
+                composer_ruler_seeking = true;
+                transport_ms = composer_time_for_x(touch.px);
+                timeline_selection.cursor_ms = transport_ms;
+                bottom_needs_redraw = true;
+                DS_TRACE("DSDBG|SEEK_RULER|transport=%lu\n", (unsigned long)transport_ms);
+            } else if (touch.py >= 28 && touch.py < COMPOSER_KEYBOARD_TOP && touch.px <= 24 &&
+                       direct_note_hit(touch.px, touch.py) < 0) {
                 composer_pitch_panning = true;
                 composer_pitch_pan_origin_y = touch.py;
                 composer_pitch_pan_origin_low = composer_pitch_window_low;
@@ -2698,46 +3141,82 @@ int main() {
                 DS_TRACE("DSDBG|PITCH_PAN_OPEN|y=%d|low=%d\n",
                          touch.py, composer_pitch_window_low);
             } else if (touch.py >= COMPOSER_KEYBOARD_TOP && touch.py < 192) {
-                composer_keyboard_dragging = true;
-                composer_keyboard_key = loop_logic::key_for_x(touch.px);
-                composer_keyboard_row = (touch.py - COMPOSER_KEYBOARD_TOP) /
-                    COMPOSER_KEYBOARD_ROW_STEP;
-                composer_keyboard_track = -1;
-                composer_keyboard_drop_ms = 0;
-                key = composer_keyboard_key;
-                bottom_needs_redraw = true;
-            } else {
-                if (touch.px < loop_logic::COMPOSER_TIMELINE_LEFT_X ||
-                    touch.px > loop_logic::COMPOSER_TIMELINE_RIGHT_X) {
-                    show_note_rejection("TIMELINE ONLY");
-                } else {
-                    int composer_track = composer_track_index_for_y(touch.py);
-                    bool selected_row = composer_track == selected_track;
-                    if (selected_row) {
-                        int direct_index = direct_note_hit(touch.px, touch.py);
-                        if (direct_index >= 0) {
-                            composer_selected_note = direct_index;
-                            const NoteEvent& event = tracks[selected_track].events[direct_index];
-                            composer_dragging_note = true;
-                            composer_drag_changed = false;
-                            composer_drag_origin_ms = composer_time_for_x(touch.px);
-                            composer_drag_original_start_ms = event.start_ms;
-                            composer_drag_original_end_ms = event.end_ms;
-                            phrase_picker_selected = -1;
-                            bottom_needs_redraw = true;
-                            DS_TRACE("DSDBG|NOTE_SELECT|track=%d|event=%d\n",
-                                     selected_track, direct_index);
-                        } else {
-                            composer_selected_note = -1;
-                            composer_dragging_note = false;
-                            start_note_insertion(composer_time_for_x(touch.px));
-                        }
+                if (detail_note_active && composer_selected_note >= 0 &&
+                    composer_selected_note < tracks[selected_track].event_count) {
+                    const NoteEvent& ev = tracks[selected_track].events[composer_selected_note];
+                    uint32_t detail_span = pulse_ms * 2u > 0 ? pulse_ms * 2u : 1000u;
+                    int r_left = loop_logic::COMPOSER_TIMELINE_LEFT_X;
+                    int r_right = loop_logic::COMPOSER_TIMELINE_RIGHT_X;
+                    int d_width = r_right - r_left;
+                    int nleft = r_left + (int)(((int64_t)ev.start_ms - (int64_t)detail_view_start_ms) * d_width / (int64_t)detail_span);
+                    int nright = r_left + (int)(((int64_t)ev.end_ms - (int64_t)detail_view_start_ms) * d_width / (int64_t)detail_span);
+                    if (nleft < r_left) nleft = r_left;
+                    if (nright > r_right) nright = r_right;
+                    if (nright < nleft + 6) nright = nleft + 6 <= r_right ? nleft + 6 : r_right;
+                    if ((int)touch.px <= nleft + 6)
+                        composer_edit_mode = loop_logic::NOTE_START;
+                    else if ((int)touch.px >= nright - 6)
+                        composer_edit_mode = loop_logic::NOTE_END;
+                    else
+                        composer_edit_mode = loop_logic::NOTE_MOVE;
+                    composer_dragging_note = true;
+                    composer_drag_changed = false;
+                    int clamped_px = touch.px < r_left ? r_left : (touch.px > r_right ? r_right : touch.px);
+                    composer_drag_origin_ms = detail_view_start_ms +
+                        (uint32_t)(((uint64_t)(clamped_px - r_left) * detail_span) / (uint32_t)d_width);
+                    composer_drag_original_start_ms = ev.start_ms;
+                    composer_drag_original_end_ms = ev.end_ms;
+                    bottom_needs_redraw = true;
+                    DS_TRACE("DSDBG|DETAIL_DRAG_OPEN|track=%d|event=%d|mode=%d\n",
+                             selected_track, composer_selected_note, (int)composer_edit_mode);
+                } else if (touch.px < loop_logic::COMPOSER_TIMELINE_LEFT_X) {
+                    if (touch.py < 167) {
+                        if (octave < 6) ++octave;
                     } else {
-                        show_note_rejection("SELECTED ROW");
+                        if (octave > 2) --octave;
                     }
+                    composer_pitch_window_octave = octave;
+                    composer_pitch_window_low = loop_logic::pitch_window_low_midi(octave);
+                    bottom_needs_redraw = true;
+                    DS_TRACE("DSDBG|OCTAVE_TOUCH|octave=%d|low=%d\n",
+                             octave, composer_pitch_window_low);
+                } else {
+                    composer_keyboard_dragging = true;
+                    composer_keyboard_key = loop_logic::key_for_composer_x(touch.px);
+                    composer_keyboard_row = (touch.py < 167) ? 1 : 0;
+                    composer_keyboard_track = -1;
+                    composer_keyboard_drop_ms = 0;
+                    key = composer_keyboard_key;
+                    bottom_needs_redraw = true;
+                }
+            } else if (touch.py >= 28 && touch.py < COMPOSER_KEYBOARD_TOP) {
+                int direct_index = direct_note_hit(touch.px, touch.py);
+                if (direct_index >= 0) {
+                    composer_selected_note = direct_index;
+                    const NoteEvent& event = tracks[selected_track].events[direct_index];
+                    detail_note_active = true;
+                    update_detail_view_for_note(event);
+                    composer_edit_mode = loop_logic::NOTE_MOVE;
+                    composer_dragging_note = true;
+                    composer_drag_changed = false;
+                    composer_drag_origin_ms = composer_time_for_x(touch.px);
+                    composer_drag_original_start_ms = event.start_ms;
+                    composer_drag_original_end_ms = event.end_ms;
+                    phrase_picker_selected = -1;
+                    bottom_needs_redraw = true;
+                    DS_TRACE("DSDBG|NOTE_SELECT|track=%d|event=%d\n",
+                             selected_track, direct_index);
+                } else {
+                    if (!detail_note_active) composer_selected_note = -1;
+                    if (composer_selected_note < 0 && tracks[selected_track].event_count == 1)
+                        composer_selected_note = 0;
+                    detail_note_active = false;
+                    composer_dragging_note = false;
+                    bottom_needs_redraw = true;
+                    DS_TRACE("DSDBG|DETAIL_CLOSE|track=%d\n", selected_track);
                 }
             }
-        } else if ((held & KEY_TOUCH) && touch.py >= TOUCH_TIMELINE_TOP && touch.py < 192) {
+        } else if (!focus_timeline && (held & KEY_TOUCH) && touch.py >= TOUCH_TIMELINE_TOP && touch.py < 192) {
             if (touch.px < 84) {
                 int x = touch.px < 8 ? 8 : (touch.px > 76 ? 76 : touch.px);
                 uint32_t level = (uint32_t)(((x - 8) * 14 + 34) / 68);
@@ -2756,7 +3235,7 @@ int main() {
                 sustain_release_level = (uint8_t)(((x - 176) * 9 + 36) / 72);
                 if (sustain_release_level > 9) sustain_release_level = 9;
             }
-        } else if ((held & KEY_TOUCH) && touch.py < TOUCH_TIMELINE_TOP) {
+        } else if (!focus_timeline && (held & KEY_TOUCH) && touch.py < TOUCH_TIMELINE_TOP) {
             // Accept zone changes on the first hardware sample. Requiring two
             // consecutive 60 Hz samples loses fast notes on real DS.
             stable_touch_key = loop_logic::key_for_x(touch.px);

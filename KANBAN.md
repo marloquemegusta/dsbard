@@ -20,6 +20,13 @@ Este archivo es la copia versionada del tablero. La interfaz visual es [`KANBAN.
   - Mostrar una barra verde que avance sobre el gráfico inferior mientras `START` reproduce el rango recortado.
   - Terminado: la barra sigue el tiempo de preview dentro de `START..END`, desaparece al detener y la documentación queda actualizada.
 ## Revisión
+- **K-012 — Rediseño: compositor por descubrimiento de notas y paridad con ROM de la DS** [feature, ux, looper, composición] — **Revisión**
+  - Historia de usuario: al escuchar una canción, quiero probar notas en el teclado de 2 octavas y colocarlas directamente en una línea temporal por pista, con ajuste fino inline (`DETAIL 2P`), vista macro de 20s arriba y los 17 timbres de la ROM de referencia.
+  - Criterio inicial: pantalla de compositor como vista principal tras elegir canción, teclado de 2 octavas con botones `5 +`/`4 -` y sombreado cromático, escala vertical `7..2` con cursor verde, barra inline `DETAIL 2P` al soltar/seleccionar nota, overlay `CONTROLS` al mantener `SELECT`, interpolación en `DRAW A NAME` y 17 timbres (13 PCM extraídos de la ROM buena + 4 PSG).
+  - Alcance, restricciones, escenario de 20 segundos y criterios completos: [`docs/note-composer-redesign-brief.md`](docs/note-composer-redesign-brief.md).
+  - **Fricción observada:** la reconstrucción intermedia abría un teclado antiguo de 12 franjas, ocultaba el compositor tras mantener `SELECT` y abría una pantalla modal `INSERT NOTE` al soltar una nota, rompiendo la fluidez y la estética de la ROM de la DS.
+  - **Entrega completada:** restaurar la apariencia, paleta, simetría, controles (`SELECT_HELP`, `DETAIL 2P`, `5 +`/`4 -`, escala `7..2`, vista macro 20s con viewport verde) y los 17 instrumentos de `recovered/ds-stylophone-from-ds.nds`, puliendo además glifos faltantes (`X`, `:`, `/`, `+`), grosores de líneas y recortes de texto.
+  - **Terminado:** tests host en verde, build BlocksDS sin errores y capturas comparativas de los escenarios de auditoría alineadas en estilo y funcionalidad con la ROM de referencia.
 - **K-005 — Panel FX compacto para vibrato y sustain** [ux, audio]
   - Quitar glide y reutilizar la franja `160..192`: controles FX en modo normal y timeline de recorte durante la aceptación.
   - Terminado: vibrato y cola de sustain ajustables con sliders tactiles cuantizados, sustain activado manteniendo `L`, sin tocar las 12 zonas cromaticas; tests, build y documentación actualizados.
@@ -39,21 +46,6 @@ Este archivo es la copia versionada del tablero. La interfaz visual es [`KANBAN.
   - Terminado: Lista priorizada con alcance y criterio de aceptación por idea.
 
 ## En curso
-
-- **K-011 — DEPRECADO: exploración con modo equipo** [exploración, feature, ux, looper] — **Revisión**
-  - El experimento de la rama `codex/note-composer-redesign` no consiguió expresar el rediseño en la ROM y queda abandonado. No continuar ni fusionar sus commits.
-  - La intención recuperable y el nuevo ticket están documentados en [`docs/note-composer-redesign-brief.md`](docs/note-composer-redesign-brief.md).
-
-- **K-012 — Rediseño: compositor por descubrimiento de notas** [feature, ux, looper, composición] — **Revisión**
-  - Historia de usuario: al escuchar una canción, quiero probar notas en el teclado y colocarlas directamente en una línea temporal por pista, para construir una base y capas sin tener que tocar una frase perfecta a tempo.
-  - Criterio inicial: pantalla de compositor visible, teclado como preescucha, notas individuales movibles y estirables, tres pistas con reloj global, sin flujo obligatorio de captura/aceptación de frases.
-  - Alcance, restricciones, escenario de 20 segundos y criterios completos: [`docs/note-composer-redesign-brief.md`](docs/note-composer-redesign-brief.md).
-  - **Fricción observada:** la frase mezcla captura, repetición, edición y sincronización; para descubrir una melodía el usuario tiene que interpretar a tempo y corregir después.
-  - **Objetivo de esta exploración:** probar una composición basada en `NoteEvent` individuales, con teclado como preescucha y timeline como lugar de inserción/edición, reutilizando el reloj, el audio, las tres pistas y la superficie táctil existentes.
-  - **Primera ronda:** implementar el candidato mínimo que permita preescuchar una nota, colocarla en una pista, moverla, ajustar su duración, reproducir el ciclo global y cancelar una inserción sin residuo. Mantener `Phrase` para compatibilidad mientras no exista una migración validada.
-  - **Fuera de alcance inicial:** eliminar todo el almacenamiento de frases, polifonía, overdub, cuantización avanzada y validación física.
-  - **Entrega recuperada:** viewport temporal, selección directa, nudge con snap al soltar, cambio de pitch, borrado, detalle y persistencia atómica sobre las cuatro pistas.
-  - **Terminado de la exploración:** una traza de usuario virtual completa, tests host de inserción/edición/reproducción y una decisión documentada de aceptar, corregir o descartar el candidato. Mover a `Revisión` solo tras verificar la ronda.
 
 - **K-010 — Timeline táctil, metrónomo y corrección rítmica mínima** [feature, ux, looper, ritmo, grabación] — **En curso**
   - **Fricción observada:** al repetir muchas veces una base no se puede volver inmediatamente al comienzo útil; `LOOP 1` repite las tres copias de una captura `x3` porque la UI muestra tres cajas pero el transporte cuenta una `Phrase` lógica; y el intérprete comete errores grandes de duración o posición que un autoajuste no puede interpretar.

@@ -76,8 +76,8 @@ inline PulseGridLineKind pulse_grid_line_kind(uint32_t step, uint8_t beats_per_b
 
 static constexpr int TIMELINE_LEFT_X = 91;
 static constexpr int TIMELINE_RIGHT_X = 251;
-static constexpr int COMPOSER_TIMELINE_LEFT_X = 48;
-static constexpr int COMPOSER_TIMELINE_RIGHT_X = 251;
+static constexpr int COMPOSER_TIMELINE_LEFT_X = 18;
+static constexpr int COMPOSER_TIMELINE_RIGHT_X = 255;
 static constexpr int COMPOSER_MIN_NOTE_PIXEL_WIDTH = 4;
 static constexpr int PITCH_WINDOW_SEMITONES = 24;
 static constexpr int PITCH_LANE_TOP_OFFSET = 2;
@@ -507,6 +507,13 @@ inline uint32_t phase_ms(uint32_t elapsed_ms, uint32_t duration_ms) {
 
 inline int key_for_x(uint16_t x) {
     return x >= 256 ? 11 : (int)(((uint32_t)x * 12u) / 256u);
+}
+
+inline int key_for_composer_x(int x) {
+    if (x < COMPOSER_TIMELINE_LEFT_X) return 0;
+    if (x >= 256) return 11;
+    int k = ((x - COMPOSER_TIMELINE_LEFT_X) * 12) / (256 - COMPOSER_TIMELINE_LEFT_X);
+    return k < 0 ? 0 : (k > 11 ? 11 : k);
 }
 
 inline int midi_for_key(int octave, int key) {
