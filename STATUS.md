@@ -1,19 +1,42 @@
 # Estado
 
-- El sistema de grabacion ya no depende de una pista master. Cualquier pista puede grabarse o componerse primero.
-- Al entrar en una cancion (`NEW` o `CONTINUE`), la aplicacion abre directamente el **Compositor de 2 octavas** (`focus_timeline = true`, `DEFAULT_PULSE_MS = 500`):
-  - **Pantalla superior (`COMPOSER`)**: muestra la vista macro (`0S..20S`) de las 4 pistas en bandas continuas (`y = 30..153`), un recuadro verde de 1 px sobre la pista activa indicando la ventana visible de 5 s (`0S..5S`), un sub-recuadro azul claro indicando la ventana `DETAIL 2P` cuando esta abierta, y las barras inferiores separadas `DIARY` y `PULSE 500 S  LOOP  VIB 0  SUS 2`.
-  - **Pantalla inferior (Piano Roll + Teclado de 2 filas)**: muestra la cabecera compacta (`TRK N > STATE  OCT 4 5  TIMBRE`), la regla interactiva de 5 s (`0S..5S`, tocar/arrastrar mueve el playhead), la escalera vertical de octavas a la izquierda (`7..2` con indicador verde deslizante para hacer pan vertical de 24 semitonos), el piano roll de la pista activa y la franja inferior (`y = 143..191`).
-  - **Teclado cromatico de 2 filas (`0..11`) y botones de octava (`5 +` / `4 -`)**: la fila superior toca `octave + 1` y la fila inferior toca `octave`, diferenciando teclas naturales y sostenidos; la columna izquierda permite subir/bajar octava con un toque.
-  - **Edicion inline `DETAIL 2P`**: arrastrar una tecla `0..11` al piano roll inserta la nota directamente en la pista activa y sustituye solo la franja del teclado inferior por la barra `DETAIL 2P` (zoom de 2 pulsos) para mover o redimensionar la nota sin salir del compositor. Tocar una nota existente tambien abre `DETAIL 2P`; pulsar `A` o tocar un hueco vacio del piano roll devuelve el teclado de 2 filas; `B` borra la nota seleccionada.
-  - **Ayuda en vivo (`SELECT` mantenido)**: mantener `SELECT` muestra el overlay `CONTROLS` de 15 lineas en la pantalla superior sin salir del compositor; un toque corto de `SELECT` silencia o activa la pista seleccionada.
-- La tipografia bitmap 3x5 incluye glifos completos (`A-Z`, `0-9`, `|`, `-`, `+`, `/`, `:`, `.`, `>`, `#`) y `DRAW A NAME` interpola trazos continuos al arrastrar el stylus.
-- Recuperado de las sesiones: almacenamiento binario v1 compatible con 16 temas (`DSSG`), biblioteca de arranque (`CONTINUE`/`NEW`/`SONGS`), etiquetas manuscritas y guardado atomico tras cambios de notas, transporte, mute y efectos. Si la tarjeta no esta disponible, la aplicacion continua en memoria.
-- Cada `NoteEvent` conserva `instrument_id` y su nivel de sustain; hay **13 instrumentos PCM multisampleados** (`RHODES`, `KALIMBA`, `BASS`, `PLUCK`, `GLASS`, `PAD`, `HEROIC`, `HORN`, `ANIME`, `CINEMA`, `STRINGS`, `E GUITAR`, `FLUTE`, 52 archivos `.bin`) con sus puntos de loop exactos y **4 referencias PSG** (`SQUARE`, `PULSE`, `THIN`, `DARK`), sumando 17 timbres.
-- El audio conserva las frecuencias musicales en Hz y usa `8 * Hz` para PSG. Los tests cubren monotonia `E -> F` en octavas 2-6.
-- `build.ps1` sincroniza las fuentes, cabeceras y las 52 muestras con `.tools/blocksds-test`, compila BlocksDS y copia la salida a la unica ROM final `ds-stylophone.nds`.
-- Probado: tests host-side C++ y estructurales; compilacion DS canonica con BlocksDS en Docker, incluyendo `source/song_files.cpp`.
-- Comparacion y regresion: la ROM reconstruida valida contra la ROM de referencia de la DS (`recovered/ds-stylophone-from-ds.nds`) en los escenarios headless de DeSmuME (`tests/scenarios/composer_headless.json` y los escenarios de auditoria visual/funcional).
-- Validaciones pendientes: ver `KNOWN_ISSUES.md`; aun no se puede afirmar la verificacion auditiva formal ni la validacion fisica en DSi XL.
-- Build exacto: `.\build.ps1` (BlocksDS canonico).
+- Al entrar en una canción (`NEW` o `CONTINUE`), la aplicación abre directamente el **Compositor cromático de 2 octavas** (`focus_timeline = true`, `DEFAULT_PULSE_MS = 500`):
+  - **Pantalla superior (`COMPOSER`)**: vista macro (`0S..20S`) de las 4 pistas, un recuadro amarillo/naranja que encuadra la ventana activa que se visualiza en la pantalla inferior, aguja de reproducción verde global y tiras inferiores `DIARY` y de estado (`PULSE`, `LOOP`, `VIB`, `SUS`).
+  - **Pantalla inferior (Piano Roll + Teclado cromático permanente)**:
+    - Teclado cromático de 2 filas (`0..11`, `y = 143..191`) con botones `+`/`-` de octava a la izquierda: **nunca desaparece ni se oculta** durante la selección, edición o inserción.
+    - Cabecera interactiva con conmutador de métrica `4/4` vs `3/4` e indicador táctil de tempo (`BPM`).
+    - Control de Tempo / BPM (`60..240 BPM`): `R + ←`/`→` ajusta la velocidad en pasos de ±5 BPM (o tocando la mitad izquierda/derecha del indicador `BPM` en la cabecera); todas las notas, compases y duraciones se escalan proporcionalmente en tiempo real para preservar el ritmo de la canción intacto.
+    - Metrónomo en `R`: pulsación simple conmuta clic de metrónomo al soltar, sin dispararse accidentalmente al usar `R + ←`/`→` o `R + B`.
+    - Fondo de piano roll en cebra por compás con líneas de pulso claras.
+    - Sombras de pistas (Ghost Notes): las demás pistas no silenciadas se proyectan como siluetas grises con su índice `0..11`.
+    - Escalera vertical de octavas a la izquierda (`7..2`) para pan de alturas.
+    - Regla interactiva con búsqueda inmediata de aguja.
+  - **Flujo de inserción y edición ágil**:
+    - Preescucha en vivo al tocar cualquier tecla `0..11`; botón `A` estampa la última nota en el cursor respetando la rejilla de pulso.
+    - Arrastrar desde el teclado al piano roll inserta directamente donde se suelte.
+    - Edición de notas seleccionadas: cruceta `↑`/`↓` transpone tono con preescucha; `←`/`→` desplaza en el tiempo; `L + ←`/`→` redimensiona duración por el extremo derecho; `B` borra selección.
+    - Edición directa con stylus: arrastrar centro mueve la nota; arrastrar borde derecho cambia su duración.
+    - Selección rectangular múltiple manteniendo `L` y arrastrando el stylus sobre el piano roll.
+    - Clonado instantáneo con `L + A` para duplicar la selección o el último compás a continuación.
+    - Desplazamiento libre (pan) arrastrando el stylus sobre cualquier zona vacía del piano roll.
+    - Reproducción con contexto en `START`: reproduce desde el inicio del compás actual.
+  - **Ayuda en vivo (`SELECT` mantenido)**: muestra el panel `CONTROLS` de 15 líneas en la pantalla superior; un toque corto conmuta silencio (`MUTE`) en la pista activa.
+- **Paleta de sonido y motor de volumen nivelado**:
+  - Eliminada la compensación agresiva antigua de `pcm_volume_for_note`; ecualización suave centrada en C4 y volumen normalizado a `95/127` tanto para preescucha como para reproducción en bucle.
+  - Envolvente ADSR por software (15 ms de ataque suave, decay y sustain al 70%) para las voces PSG (`CHIP LEAD`, `CHIP WAVE`), eliminando pitidos planos y clics.
+  - **10 instrumentos definitivos**:
+    1. `BRASS` (heroico multisampleado con loop)
+    2. `STRINGS` (cuerdas cálidas con loop)
+    3. `CHOIR` (coro gregoriano con formantes *"Ohhh"* en graves y *"Ahhh"* en agudos)
+    4. `FLUTE` (flauta con aire y loop suave)
+    5. `PIANO` (Rhodes/piano de caída natural)
+    6. `PLUCK` (arpa/cuerda pulsada)
+    7. `BASS` (bajo definido y redondo para altavoces DS)
+    8. `CHIP LEAD` (onda pulso 50% con envolvente)
+    9. `CHIP WAVE` (onda pulso 12% con envolvente)
+    10. `DRUMS` (kit de percusión de 12 elementos mapeado a las teclas `0..11`)
+- Almacenamiento binario v1 compatible con 16 temas (`DSSG`), biblioteca de arranque (`CONTINUE`/`NEW`/`SONGS`), etiquetas manuscritas y guardado atómico tras cambios de notas, transporte, mute y efectos.
+- `build.ps1` sincroniza fuentes, cabeceras y muestras con `.tools/blocksds-test`, compila con BlocksDS y genera la única ROM canónica `ds-stylophone.nds`.
+- Validaciones completadas: tests estructurales Python (`test_loop_logic.py`), tests de lógica en host C++ (`test_loop_logic.cpp`), flujo integrado de looper (`run-looper-flow.ps1` con `LOOPER_FLOW_RESULT=PASS`) y compilación limpia BlocksDS.
+- Build exacto: `.\build.ps1` (BlocksDS canónico).
 - ROM final: `ds-stylophone.nds`.

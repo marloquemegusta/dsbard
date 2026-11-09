@@ -9,58 +9,46 @@
 #include <algorithm>
 #include "loop_logic.h"
 #include "song_files.h"
-#include "rhodes_48_bin.h"
-#include "rhodes_60_bin.h"
-#include "rhodes_72_bin.h"
-#include "rhodes_84_bin.h"
-#include "kalimba_48_bin.h"
-#include "kalimba_60_bin.h"
-#include "kalimba_72_bin.h"
-#include "kalimba_84_bin.h"
-#include "bass_48_bin.h"
-#include "bass_60_bin.h"
-#include "bass_72_bin.h"
-#include "bass_84_bin.h"
-#include "pluck_48_bin.h"
-#include "pluck_60_bin.h"
-#include "pluck_72_bin.h"
-#include "pluck_84_bin.h"
-#include "glass_48_bin.h"
-#include "glass_60_bin.h"
-#include "glass_72_bin.h"
-#include "glass_84_bin.h"
-#include "pad_48_bin.h"
-#include "pad_60_bin.h"
-#include "pad_72_bin.h"
-#include "pad_84_bin.h"
 #include "brass_heroic_48_bin.h"
 #include "brass_heroic_60_bin.h"
 #include "brass_heroic_72_bin.h"
 #include "brass_heroic_84_bin.h"
-#include "brass_horn_48_bin.h"
-#include "brass_horn_60_bin.h"
-#include "brass_horn_72_bin.h"
-#include "brass_horn_84_bin.h"
-#include "brass_anime_48_bin.h"
-#include "brass_anime_60_bin.h"
-#include "brass_anime_72_bin.h"
-#include "brass_anime_84_bin.h"
-#include "brass_cinematic_48_bin.h"
-#include "brass_cinematic_60_bin.h"
-#include "brass_cinematic_72_bin.h"
-#include "brass_cinematic_84_bin.h"
 #include "strings_48_bin.h"
 #include "strings_60_bin.h"
 #include "strings_72_bin.h"
 #include "strings_84_bin.h"
-#include "e_guitar_48_bin.h"
-#include "e_guitar_60_bin.h"
-#include "e_guitar_72_bin.h"
-#include "e_guitar_84_bin.h"
+#include "choir_48_bin.h"
+#include "choir_60_bin.h"
+#include "choir_72_bin.h"
+#include "choir_84_bin.h"
 #include "flute_48_bin.h"
 #include "flute_60_bin.h"
 #include "flute_72_bin.h"
 #include "flute_84_bin.h"
+#include "rhodes_48_bin.h"
+#include "rhodes_60_bin.h"
+#include "rhodes_72_bin.h"
+#include "rhodes_84_bin.h"
+#include "pluck_48_bin.h"
+#include "pluck_60_bin.h"
+#include "pluck_72_bin.h"
+#include "pluck_84_bin.h"
+#include "bass_48_bin.h"
+#include "bass_60_bin.h"
+#include "bass_72_bin.h"
+#include "bass_84_bin.h"
+#include "drum_0_bin.h"
+#include "drum_1_bin.h"
+#include "drum_2_bin.h"
+#include "drum_3_bin.h"
+#include "drum_4_bin.h"
+#include "drum_5_bin.h"
+#include "drum_6_bin.h"
+#include "drum_7_bin.h"
+#include "drum_8_bin.h"
+#include "drum_9_bin.h"
+#include "drum_10_bin.h"
+#include "drum_11_bin.h"
 
 using loop_logic::NoteEvent;
 using loop_logic::PendingNoteInsertion;
@@ -80,8 +68,10 @@ static constexpr int TRACK_BOX_TOP = 15;
 static constexpr int TRACK_BOX_BOTTOM = 21;
 static constexpr int KEY_COUNT = 12;
 static constexpr int MAX_VOICES = 4;
-static constexpr int INSTRUMENTS = 17;
-static constexpr int PCM_INSTRUMENTS = 13;
+static constexpr int INSTRUMENTS = 10;
+static constexpr int PCM_MELODIC_INSTRUMENTS = 7;
+static constexpr int DRUM_INSTRUMENT = 9;
+static constexpr int DRUM_HITS = 12;
 static constexpr int ROOTS = 4;
 static constexpr int SAMPLE_RATE = 22050;
 static constexpr int TOUCH_TIMELINE_TOP = 160;
@@ -107,33 +97,98 @@ static constexpr uint32_t PULSE_STEP_MS = 125;
 static constexpr uint32_t METRONOME_CLICK_MS = 100;
 static const int SAMPLE_ROOTS[ROOTS] = {48, 60, 72, 84};
 static const char* TIMBRE_NAMES[INSTRUMENTS] = {
-    "RHODES", "KALIMBA", "BASS", "PLUCK", "GLASS", "PAD",
-    "BRASS HEROIC", "BRASS HORN", "BRASS ANIME", "BRASS CINEMATIC",
-    "STRINGS", "E-GUITAR", "FLUTE",
-    "SQUARE", "PULSE", "THIN", "DARK"
+    "BRASS", "STRINGS", "CHOIR", "FLUTE", "PIANO",
+    "PLUCK", "BASS", "CHIP LEAD", "CHIP WAVE", "DRUMS"
 };
-static const uint32_t PCM_LOOP_POINTS[PCM_INSTRUMENTS] = {
-    0u, 0u, 0u, 0u, 0u, 35280u,
-    14332u, 14332u, 14332u, 14332u, 17640u, 11025u, 14332u
+static const uint32_t PCM_LOOP_POINTS[PCM_MELODIC_INSTRUMENTS] = {
+    14332u, // BRASS
+    17640u, // STRINGS
+    12938u, // CHOIR
+    14332u, // FLUTE
+    0u,     // PIANO
+    0u,     // PLUCK
+    0u      // BASS
 };
-static const DutyCycle PSG_DUTIES[4] = {DutyCycle_75, DutyCycle_25, DutyCycle_12, DutyCycle_50};
 struct SampleRef { const void* data; uint32_t size; };
 #define SAMPLE(kind, root) { kind##_##root##_bin, kind##_##root##_bin_size }
-static const SampleRef SAMPLES[PCM_INSTRUMENTS][ROOTS] = {
-    {SAMPLE(rhodes,48), SAMPLE(rhodes,60), SAMPLE(rhodes,72), SAMPLE(rhodes,84)},
-    {SAMPLE(kalimba,48), SAMPLE(kalimba,60), SAMPLE(kalimba,72), SAMPLE(kalimba,84)},
-    {SAMPLE(bass,48), SAMPLE(bass,60), SAMPLE(bass,72), SAMPLE(bass,84)},
-    {SAMPLE(pluck,48), SAMPLE(pluck,60), SAMPLE(pluck,72), SAMPLE(pluck,84)},
-    {SAMPLE(glass,48), SAMPLE(glass,60), SAMPLE(glass,72), SAMPLE(glass,84)},
-    {SAMPLE(pad,48), SAMPLE(pad,60), SAMPLE(pad,72), SAMPLE(pad,84)},
+static const SampleRef SAMPLES[PCM_MELODIC_INSTRUMENTS][ROOTS] = {
     {SAMPLE(brass_heroic,48), SAMPLE(brass_heroic,60), SAMPLE(brass_heroic,72), SAMPLE(brass_heroic,84)},
-    {SAMPLE(brass_horn,48), SAMPLE(brass_horn,60), SAMPLE(brass_horn,72), SAMPLE(brass_horn,84)},
-    {SAMPLE(brass_anime,48), SAMPLE(brass_anime,60), SAMPLE(brass_anime,72), SAMPLE(brass_anime,84)},
-    {SAMPLE(brass_cinematic,48), SAMPLE(brass_cinematic,60), SAMPLE(brass_cinematic,72), SAMPLE(brass_cinematic,84)},
     {SAMPLE(strings,48), SAMPLE(strings,60), SAMPLE(strings,72), SAMPLE(strings,84)},
-    {SAMPLE(e_guitar,48), SAMPLE(e_guitar,60), SAMPLE(e_guitar,72), SAMPLE(e_guitar,84)},
-    {SAMPLE(flute,48), SAMPLE(flute,60), SAMPLE(flute,72), SAMPLE(flute,84)}
+    {SAMPLE(choir,48), SAMPLE(choir,60), SAMPLE(choir,72), SAMPLE(choir,84)},
+    {SAMPLE(flute,48), SAMPLE(flute,60), SAMPLE(flute,72), SAMPLE(flute,84)},
+    {SAMPLE(rhodes,48), SAMPLE(rhodes,60), SAMPLE(rhodes,72), SAMPLE(rhodes,84)},
+    {SAMPLE(pluck,48), SAMPLE(pluck,60), SAMPLE(pluck,72), SAMPLE(pluck,84)},
+    {SAMPLE(bass,48), SAMPLE(bass,60), SAMPLE(bass,72), SAMPLE(bass,84)}
 };
+static const SampleRef DRUM_SAMPLES[DRUM_HITS] = {
+    {drum_0_bin, drum_0_bin_size},
+    {drum_1_bin, drum_1_bin_size},
+    {drum_2_bin, drum_2_bin_size},
+    {drum_3_bin, drum_3_bin_size},
+    {drum_4_bin, drum_4_bin_size},
+    {drum_5_bin, drum_5_bin_size},
+    {drum_6_bin, drum_6_bin_size},
+    {drum_7_bin, drum_7_bin_size},
+    {drum_8_bin, drum_8_bin_size},
+    {drum_9_bin, drum_9_bin_size},
+    {drum_10_bin, drum_10_bin_size},
+    {drum_11_bin, drum_11_bin_size}
+};
+
+struct PsgEnvelopeState {
+    int voice_id = -1;
+    uint32_t start_ms = 0;
+    u8 peak_volume = 62;
+};
+static constexpr int MAX_PSG_TRACKERS = 8;
+static PsgEnvelopeState psg_envelopes[MAX_PSG_TRACKERS] = {};
+
+static void register_psg_voice(int voice, uint32_t now) {
+    if (voice < 0) return;
+    for (int i = 0; i < MAX_PSG_TRACKERS; ++i) {
+        if (psg_envelopes[i].voice_id == voice || psg_envelopes[i].voice_id < 0) {
+            psg_envelopes[i].voice_id = voice;
+            psg_envelopes[i].start_ms = now;
+            psg_envelopes[i].peak_volume = 62;
+            soundSetVolume(voice, 0);
+            return;
+        }
+    }
+    psg_envelopes[0].voice_id = voice;
+    psg_envelopes[0].start_ms = now;
+    psg_envelopes[0].peak_volume = 62;
+    soundSetVolume(voice, 0);
+}
+
+static void unregister_psg_voice(int voice) {
+    if (voice < 0) return;
+    for (int i = 0; i < MAX_PSG_TRACKERS; ++i) {
+        if (psg_envelopes[i].voice_id == voice) {
+            psg_envelopes[i].voice_id = -1;
+        }
+    }
+}
+
+static void update_psg_envelopes(uint32_t now) {
+    for (int i = 0; i < MAX_PSG_TRACKERS; ++i) {
+        if (psg_envelopes[i].voice_id < 0) continue;
+        uint32_t elapsed = now - psg_envelopes[i].start_ms;
+        int vol = 0;
+        int peak = psg_envelopes[i].peak_volume;
+        int sustain = (peak * 7) / 10;
+        if (elapsed < 15) {
+            vol = (peak * (int)elapsed) / 15;
+        } else if (elapsed < 105) {
+            uint32_t decay_elapsed = elapsed - 15;
+            vol = peak - ((peak - sustain) * (int)decay_elapsed) / 90;
+        } else {
+            vol = sustain;
+        }
+        if (vol < 0) vol = 0;
+        if (vol > 127) vol = 127;
+        soundSetVolume(psg_envelopes[i].voice_id, vol);
+    }
+}
 
 static Track tracks[TRACKS] = {};
 static song_storage::SongDocument active_song = {};
@@ -181,6 +236,20 @@ static int composer_keyboard_key = -1;
 static int composer_keyboard_row = -1;
 static int composer_keyboard_track = -1;
 static uint32_t composer_keyboard_drop_ms = 0;
+static uint8_t beats_per_bar = 4;
+static loop_logic::NoteSelection composer_selection = {};
+static int last_played_key = 0;
+static int last_played_octave = 4;
+static int last_played_midi = 60;
+static bool last_played_valid = false;
+static bool rect_select_active = false;
+static int rect_select_start_x = 0;
+static int rect_select_start_y = 0;
+static int rect_select_cur_x = 0;
+static int rect_select_cur_y = 0;
+static bool composer_panning = false;
+static int pan_last_x = 0;
+static int pan_last_y = 0;
 static uint32_t pulse_ms = DEFAULT_PULSE_MS;
 static bool recording = false;
 static bool recording_armed = false;
@@ -224,6 +293,8 @@ static LiveTail live_tails[MAX_LIVE_TAILS] = {};
 static bool sustain_active = false;
 static bool loop_button_pending = false;
 static bool loop_button_direction_used = false;
+static bool r_button_pending = false;
+static bool r_button_direction_used = false;
 static bool trim_active = false;
 static uint32_t trim_start_ms = 0;
 static uint32_t trim_end_ms = 0;
@@ -357,35 +428,53 @@ static uint16_t sample_frequency(int midi, int root_midi) {
     return (uint16_t)(hz > 65535u ? 65535u : hz);
 }
 
-static bool is_psg_instrument(int instrument) { return instrument >= PCM_INSTRUMENTS; }
+static bool is_psg_instrument(int instrument) { return instrument == 7 || instrument == 8; }
 
 static uint16_t playback_frequency(int midi, int instrument, int root) {
+    if (instrument == DRUM_INSTRUMENT) return SAMPLE_RATE;
     return is_psg_instrument(instrument) ? loop_logic::psg_frequency_for_midi(midi)
                                          : sample_frequency(midi, SAMPLE_ROOTS[root]);
 }
 
-// The DS speakers lose low fundamentals. Keep PCM audible across the keyboard
-// without making the high register disproportionately loud.
+static constexpr u8 DEFAULT_NOTE_VOLUME = 95;
+
 static u8 pcm_volume_for_note(int midi, u8 base) {
-    int compensation = midi < 72 ? (72 - midi) : 0;
-    int volume = (int)base + compensation;
-    return (u8)(volume > 127 ? 127 : volume);
+    int offset = (60 - midi) / 4;
+    int vol = (int)base + offset;
+    if (vol < 20) vol = 20;
+    if (vol > 115) vol = 115;
+    return (u8)vol;
 }
 
-static int play_instrument(int instrument, int midi, u8 volume) {
-    if (is_psg_instrument(instrument))
-        return soundPlayPSG(PSG_DUTIES[instrument - PCM_INSTRUMENTS],
-                            loop_logic::psg_frequency_for_midi(midi), volume, 64);
-    int root = root_index_for_note(midi);
-    uint32_t loop_point = PCM_LOOP_POINTS[instrument];
-    return soundPlaySample(SAMPLES[instrument][root].data, SoundFormat_8Bit,
-                           SAMPLES[instrument][root].size, sample_frequency(midi, SAMPLE_ROOTS[root]),
-                           pcm_volume_for_note(midi, volume), 64,
-                           loop_point > 0u, loop_point);
+static int play_instrument(int instrument, int midi, u8 volume = DEFAULT_NOTE_VOLUME) {
+    if (instrument == DRUM_INSTRUMENT) {
+        int hit = (midi % DRUM_HITS + DRUM_HITS) % DRUM_HITS;
+        return soundPlaySample(DRUM_SAMPLES[hit].data, SoundFormat_8Bit,
+                               DRUM_SAMPLES[hit].size, SAMPLE_RATE,
+                               DEFAULT_NOTE_VOLUME, 64, false, 0);
+    }
+    if (is_psg_instrument(instrument)) {
+        DutyCycle duty = (instrument == 7) ? DutyCycle_50 : DutyCycle_12;
+        int voice = soundPlayPSG(duty, loop_logic::psg_frequency_for_midi(midi), 0, 64);
+        if (voice >= 0) register_psg_voice(voice, now_ms());
+        return voice;
+    }
+    if (instrument < PCM_MELODIC_INSTRUMENTS) {
+        int root = root_index_for_note(midi);
+        uint32_t loop_point = PCM_LOOP_POINTS[instrument];
+        return soundPlaySample(SAMPLES[instrument][root].data, SoundFormat_8Bit,
+                               SAMPLES[instrument][root].size, sample_frequency(midi, SAMPLE_ROOTS[root]),
+                               pcm_volume_for_note(midi, volume), 64,
+                               loop_point > 0u, loop_point);
+    }
+    return -1;
 }
 
 static void kill_voice(int slot) {
-    if (voice_ids[slot] >= 0) soundKill(voice_ids[slot]);
+    if (voice_ids[slot] >= 0) {
+        unregister_psg_voice(voice_ids[slot]);
+        soundKill(voice_ids[slot]);
+    }
     voice_ids[slot] = -1;
     voice_notes[slot] = -1;
     voice_instruments[slot] = -1;
@@ -396,7 +485,7 @@ static void set_voice(int slot, int note, int instrument) {
     instrument %= INSTRUMENTS;
     if (voice_notes[slot] == note && voice_instruments[slot] == instrument && voice_ids[slot] >= 0) return;
     kill_voice(slot);
-    voice_ids[slot] = play_instrument(instrument, note, 82);
+    voice_ids[slot] = play_instrument(instrument, note, DEFAULT_NOTE_VOLUME);
     voice_notes[slot] = note;
     voice_instruments[slot] = instrument;
 }
@@ -404,13 +493,22 @@ static void set_voice(int slot, int note, int instrument) {
 static void stop_all_voices() {
     for (int i = 0; i < MAX_VOICES; ++i) kill_voice(i);
     for (int i = 0; i < MAX_LIVE_TAILS; ++i) {
-        if (live_tails[i].voice >= 0) soundKill(live_tails[i].voice);
+        if (live_tails[i].voice >= 0) {
+            unregister_psg_voice(live_tails[i].voice);
+            soundKill(live_tails[i].voice);
+        }
         live_tails[i] = {};
     }
-    if (live_voice >= 0) soundKill(live_voice);
+    if (live_voice >= 0) {
+        unregister_psg_voice(live_voice);
+        soundKill(live_voice);
+    }
     live_voice = -1;
     live_note = -1;
-    if (note_insert_preview_voice >= 0) soundKill(note_insert_preview_voice);
+    if (note_insert_preview_voice >= 0) {
+        unregister_psg_voice(note_insert_preview_voice);
+        soundKill(note_insert_preview_voice);
+    }
     note_insert_preview_voice = -1;
     note_insert_preview_note = -1;
     note_insert_preview_instrument = -1;
@@ -536,11 +634,12 @@ static void begin_note(int key, uint32_t at) {
             live_journal_key = key;
         }
         if (live_voice >= 0) {
+            unregister_psg_voice(live_voice);
             if (sustain_active) add_live_tail(live_voice, at, sustain_release_level);
             else soundKill(live_voice);
         }
         live_root = root_index_for_note(midi);
-        live_voice = play_instrument(timbre, midi, 100);
+        live_voice = play_instrument(timbre, midi, DEFAULT_NOTE_VOLUME);
         live_note = midi;
     }
     if (recording && open_note != key) {
@@ -558,6 +657,7 @@ static void begin_note(int key, uint32_t at) {
 
 static void end_live_note(uint32_t at) {
     if (live_voice >= 0) {
+        unregister_psg_voice(live_voice);
         if (sustain_active) add_live_tail(live_voice, at, sustain_release_level);
         else soundKill(live_voice);
     }
@@ -572,9 +672,20 @@ static void end_live_note(uint32_t at) {
 
 static void refresh_live_timbre() {
     if (live_voice < 0 || live_note < 0) return;
+    unregister_psg_voice(live_voice);
     soundKill(live_voice);
     live_root = root_index_for_note(live_note);
-    live_voice = play_instrument(timbre, live_note, 100);
+    live_voice = play_instrument(timbre, live_note, DEFAULT_NOTE_VOLUME);
+}
+
+static void play_preview_midi(int midi) {
+    if (live_voice >= 0) {
+        unregister_psg_voice(live_voice);
+        soundKill(live_voice);
+    }
+    live_root = root_index_for_note(midi);
+    live_voice = play_instrument(timbre, midi, DEFAULT_NOTE_VOLUME);
+    live_note = midi;
 }
 
 static void clear_selected() {
@@ -880,7 +991,10 @@ static int active_track_event(const Track& track, uint32_t phase) {
 
 static void update_note_insert_preview() {
     if (!note_insert_active || !trim_preview_playing || paused || trim_preview_track.duration_ms == 0) {
-        if (note_insert_preview_voice >= 0) soundKill(note_insert_preview_voice);
+        if (note_insert_preview_voice >= 0) {
+            unregister_psg_voice(note_insert_preview_voice);
+            soundKill(note_insert_preview_voice);
+        }
         note_insert_preview_voice = -1;
         note_insert_preview_note = -1;
         note_insert_preview_instrument = -1;
@@ -891,11 +1005,14 @@ static void update_note_insert_preview() {
     int note = event_index >= 0 ? trim_preview_track.events[event_index].midi_note : -1;
     int instrument = event_index >= 0 ? trim_preview_track.events[event_index].instrument_id : -1;
     if (note == note_insert_preview_note && instrument == note_insert_preview_instrument) return;
-    if (note_insert_preview_voice >= 0) soundKill(note_insert_preview_voice);
+    if (note_insert_preview_voice >= 0) {
+        unregister_psg_voice(note_insert_preview_voice);
+        soundKill(note_insert_preview_voice);
+    }
     note_insert_preview_voice = -1;
     note_insert_preview_note = note;
     note_insert_preview_instrument = instrument;
-    if (note >= 0) note_insert_preview_voice = play_instrument(instrument, note, 100);
+    if (note >= 0) note_insert_preview_voice = play_instrument(instrument, note, DEFAULT_NOTE_VOLUME);
 }
 
 static uint32_t song_duration_ms() {
@@ -929,7 +1046,7 @@ static uint32_t composer_time_for_x(int x) {
     return loop_logic::composer_time_for_x(x, composer_view_start_ms, composer_view_ms);
 }
 
-static void update_detail_view_for_note(const NoteEvent& event) {
+[[maybe_unused]] static void update_detail_view_for_note(const NoteEvent& event) {
     uint32_t span = pulse_ms * 2u;
     if (span == 0) span = 1000u;
     uint32_t note_pulse = (event.start_ms / pulse_ms) * pulse_ms;
@@ -962,8 +1079,9 @@ static bool insert_composer_note_direct(uint32_t requested_ms, int midi, uint8_t
         }
     }
     composer_selected_note = found_index;
-    detail_note_active = (found_index >= 0);
-    if (detail_note_active) update_detail_view_for_note(target.events[found_index]);
+    if (found_index >= 0) composer_selection.select_single((uint16_t)found_index);
+    else composer_selection.clear();
+    detail_note_active = false;
     persist_active_song();
     bottom_needs_redraw = true;
     DS_TRACE("DSDBG|NOTE_INSERT_OPEN|track=%d|midi=%d|start=%lu|end=%lu\n",
@@ -1016,7 +1134,7 @@ static void start_note_insertion(uint32_t requested_ms) {
              (unsigned long)note_insert_pending.event.end_ms);
 }
 
-static void open_direct_note_editor(uint16_t event_index) {
+[[maybe_unused]] static void open_direct_note_editor(uint16_t event_index) {
     Track& source = tracks[selected_track];
     if (event_index >= source.event_count) {
         show_note_rejection("INVALID NOTE");
@@ -1024,8 +1142,8 @@ static void open_direct_note_editor(uint16_t event_index) {
     }
     if (focus_timeline) {
         composer_selected_note = (int)event_index;
-        detail_note_active = true;
-        update_detail_view_for_note(source.events[event_index]);
+        composer_selection.select_single(event_index);
+        detail_note_active = false;
         bottom_needs_redraw = true;
         DS_TRACE("DSDBG|NOTE_EDIT_OPEN|track=%d|event=%u|start=%lu|end=%lu\n",
                  selected_track, (unsigned)event_index,
@@ -1094,6 +1212,24 @@ static void persist_active_song() {
     bool saved = storage_ready && song_files::save_atomic(active_song_id, active_song);
     DS_TRACE("DSDBG|AUTOSAVE|id=%d|ok=%d\n", active_song_id, saved ? 1 : 0);
     if (storage_ready && !saved) show_note_rejection("SAVE FAILED");
+}
+
+static void apply_tempo_change(int direction) {
+    uint32_t old_pulse = pulse_ms;
+    uint32_t new_pulse = loop_logic::adjust_tempo_pulse_ms(old_pulse, direction);
+    if (new_pulse == old_pulse) return;
+    for (int t = 0; t < TRACKS; ++t) {
+        loop_logic::scale_track_tempo(tracks[t], old_pulse, new_pulse, COMPOSER_CONTENT_LIMIT_MS);
+    }
+    pulse_ms = new_pulse;
+    transport_ms = loop_logic::scale_timestamp(transport_ms, old_pulse, new_pulse);
+    composer_view_start_ms = loop_logic::scale_timestamp(composer_view_start_ms, old_pulse, new_pulse);
+    composer_view_start_ms = loop_logic::clamp_composer_start(
+        composer_view_start_ms, composer_content_duration_ms(), composer_view_ms);
+    persist_active_song();
+    bottom_needs_redraw = true;
+    DS_TRACE("DSDBG|TEMPO|pulse=%lu|bpm=%lu\n", (unsigned long)pulse_ms,
+             (unsigned long)loop_logic::bpm_for_pulse_ms(pulse_ms));
 }
 
 static void draw_phrase_boxes(u16* target, const Track& track, int y, uint32_t song_duration,
@@ -1437,7 +1573,7 @@ static void draw_composer_timeline(u16* target, u16 panel, u16 panel_alt, u16 li
             uint32_t b_ms = b * pulse_ms;
             if (b_ms > macro_duration) break;
             int gx = ruler_left + (int)(((uint64_t)b_ms * (uint32_t)ruler_span) / macro_duration);
-            bool is_bar = (b % 4u) == 0;
+            bool is_bar = (b % (uint32_t)beats_per_bar) == 0;
             u16 gcol = is_bar ? bar : beat;
             for (int gy = y + 1; gy < y + COMPOSER_TRACK_ROW; ++gy) {
                 if (is_bar || ((gy - y) & 1))
@@ -1453,7 +1589,7 @@ static void draw_composer_timeline(u16* target, u16 panel, u16 panel_alt, u16 li
             if (left < ruler_left + 1) left = ruler_left + 1;
             if (right > ruler_right) right = ruler_right;
             if (right < left + 2) right = left + 2 <= ruler_right ? left + 2 : ruler_right;
-            bool is_selected = active && (int)event_index == composer_selected_note;
+            bool is_selected = active && (composer_selection.is_selected(event_index) || (int)event_index == composer_selected_note);
             u16 fill = is_selected ? selected : green;
             int note_y = loop_logic::pitch_lane_y(event.midi_note, y, pitch_window_low);
             if (note_y < y + 5) note_y = y + 5;
@@ -1467,15 +1603,10 @@ static void draw_composer_timeline(u16* target, u16 panel, u16 panel_alt, u16 li
             int vx1 = ruler_left + (int)(((uint64_t)(composer_view_start_ms + composer_view_ms) * (uint32_t)ruler_span) / macro_duration);
             if (vx0 < ruler_left + 1) vx0 = ruler_left + 1;
             if (vx1 > ruler_right) vx1 = ruler_right;
-            draw_hollow_rect(target, vx0, y + 1, vx1, y + COMPOSER_TRACK_ROW - 1, green);
-            if (detail_note_active) {
-                uint32_t d_end = detail_view_start_ms + 2u * pulse_ms;
-                int dx0 = ruler_left + (int)(((uint64_t)detail_view_start_ms * (uint32_t)ruler_span) / macro_duration);
-                int dx1 = ruler_left + (int)(((uint64_t)d_end * (uint32_t)ruler_span) / macro_duration);
-                if (dx0 < ruler_left + 1) dx0 = ruler_left + 1;
-                if (dx1 > ruler_right) dx1 = ruler_right;
-                if (dx1 <= dx0) dx1 = dx0 + 2 <= ruler_right ? dx0 + 2 : ruler_right;
-                draw_hollow_rect(target, dx0, y + 2, dx1, y + COMPOSER_TRACK_ROW - 2, accent);
+            const u16 camera_box = BIT(15) | RGB15(31, 22, 0); // Amarillo / Naranja brillante
+            draw_hollow_rect(target, vx0, y + 1, vx1, y + COMPOSER_TRACK_ROW - 1, camera_box);
+            if (vx1 > vx0 + 2) {
+                draw_hollow_rect(target, vx0 + 1, y + 2, vx1 - 1, y + COMPOSER_TRACK_ROW - 2, camera_box);
             }
         }
     }
@@ -1508,16 +1639,23 @@ static void draw_composer_touch_screen(u16* target, u16 panel, u16 panel_alt,
     draw_text_bitmap(target, 6, 7, "TRK", green, 1);
     char trk_num[16];
     snprintf(trk_num, sizeof(trk_num), "%d", selected_track + 1);
-    draw_text_bitmap(target, 26, 7, trk_num, text, 1);
-    draw_text_bitmap(target, 38, 7, paused ? "||" : ">", paused ? accent : green, 1);
-    draw_text_bitmap(target, 50, 7, state, text, 1);
-    draw_text_bitmap(target, 86, 7, "OCT", text, 1);
+    draw_text_bitmap(target, 22, 7, trk_num, text, 1);
+    draw_text_bitmap(target, 32, 7, paused ? "||" : ">", paused ? accent : green, 1);
+    draw_text_bitmap(target, 42, 7, state, text, 1);
+    draw_text_bitmap(target, 70, 7, "OCT", text, 1);
     char oct_pair[32];
     snprintf(oct_pair, sizeof(oct_pair), "%d %d", octave, octave + 1);
-    draw_text_bitmap(target, 106, 7, oct_pair, text, 1);
-    draw_text_bitmap(target, 130, 7, TIMBRE_NAMES[timbre], text, 1);
+    draw_text_bitmap(target, 86, 7, oct_pair, text, 1);
+    draw_text_bitmap(target, 108, 7, TIMBRE_NAMES[timbre], text, 1);
+    char time_sig[8];
+    snprintf(time_sig, sizeof(time_sig), "%d/4", (int)beats_per_bar);
+    draw_text_bitmap(target, 160, 7, time_sig, green, 1);
+    char bpm_label[16];
+    snprintf(bpm_label, sizeof(bpm_label), "%luBPM", (unsigned long)loop_logic::bpm_for_pulse_ms(pulse_ms));
     if (now_ms() < note_rejection_until)
         draw_text_bitmap(target, 188, 7, note_rejection_text, green, 1);
+    else
+        draw_text_bitmap(target, 188, 7, bpm_label, green, 1);
 
     const int roll_left = loop_logic::COMPOSER_TIMELINE_LEFT_X;
     const int roll_right = loop_logic::COMPOSER_TIMELINE_RIGHT_X;
@@ -1566,9 +1704,31 @@ static void draw_composer_touch_screen(u16* target, u16 panel, u16 panel_alt,
     if (slider_y > 132) slider_y = 132;
     fill_rect(target, 5, slider_y, 16, slider_y + 4, green);
 
-    fill_rect(target, roll_left + 1, roll_top, roll_right, roll_bottom, panel_alt);
+    // Fondo en cebra por compases
+    uint32_t bar_dur = loop_logic::bar_duration_ms(pulse_ms, beats_per_bar);
+    if (bar_dur == 0) bar_dur = 2000;
+    uint32_t view_end = composer_view_start_ms + composer_view_ms;
+    uint32_t start_bar = composer_view_start_ms / bar_dur;
+    const u16 zebra_even = panel_alt;
+    const u16 zebra_odd = BIT(15) | RGB15(7, 11, 17);
+    fill_rect(target, roll_left + 1, roll_top, roll_right, roll_bottom, zebra_even);
+    for (uint32_t b_idx = start_bar; b_idx * bar_dur <= view_end; ++b_idx) {
+        if (b_idx % 2u != 0) {
+            uint32_t b_start = b_idx * bar_dur;
+            uint32_t b_end = b_start + bar_dur;
+            int bx0 = composer_x_for_time(b_start);
+            int bx1 = composer_x_for_time(b_end);
+            if (bx0 < roll_left + 1) bx0 = roll_left + 1;
+            if (bx1 > roll_right) bx1 = roll_right;
+            if (bx1 > bx0) {
+                fill_rect(target, bx0, roll_top, bx1, roll_bottom, zebra_odd);
+            }
+        }
+    }
+
     const u16 subdivision = BIT(15) | RGB15(5, 8, 14);
-    const u16 beat = BIT(15) | RGB15(8, 13, 21);
+    const u16 beat = BIT(15) | RGB15(10, 15, 23);
+    const u16 bar_line = BIT(15) | RGB15(18, 25, 31);
     for (int band = 0; band <= 10; ++band) {
         int py = roll_top + (band * 108) / 10;
         u16 pcol = (band == 5) ? line : subdivision;
@@ -1579,24 +1739,60 @@ static void draw_composer_touch_screen(u16* target, u16 panel, u16 panel_alt,
     }
 
     loop_logic::PulseGrid grid{pulse_ms};
-    uint32_t view_end = composer_view_start_ms + composer_view_ms;
-    uint32_t first_step = (composer_view_start_ms * 4u) / pulse_ms;
+    uint32_t first_step = (composer_view_start_ms * 4u) / (pulse_ms > 0 ? pulse_ms : 500u);
     if (grid.time(first_step) < composer_view_start_ms) ++first_step;
     for (uint32_t step = first_step; grid.time(step) <= view_end; ++step) {
         uint32_t value = grid.time(step);
         int x = composer_x_for_time(value);
         if (x > roll_left && x <= roll_right) {
-            bool is_beat = loop_logic::pulse_grid_line_kind(step, 4) != loop_logic::GRID_SUBDIVISION;
-            u16 color = is_beat ? beat : subdivision;
+            loop_logic::PulseGridLineKind kind = loop_logic::pulse_grid_line_kind(step, beats_per_bar);
+            u16 color = (kind == loop_logic::GRID_BAR) ? bar_line :
+                        ((kind == loop_logic::GRID_BEAT) ? beat : subdivision);
             for (int y = roll_top; y <= roll_bottom; ++y)
-                if (is_beat || ((y - roll_top) & 1) == 0) target[y * 256 + x] = color;
+                if (kind != loop_logic::GRID_SUBDIVISION || ((y - roll_top) & 1) == 0)
+                    target[y * 256 + x] = color;
         }
         if (value > view_end - (pulse_ms / 4u)) break;
     }
 
     int pitch_low = composer_pitch_window_low;
-    const u16 note_fill_sel = BIT(15) | RGB15(24, 31, 20);
+
+    // Sombra de otras pistas (Ghost Notes)
+    const u16 ghost_fill = BIT(15) | RGB15(5, 7, 11);
+    const u16 ghost_border = BIT(15) | RGB15(9, 11, 15);
+    const u16 ghost_text = BIT(15) | RGB15(14, 16, 20);
+    for (int trk = 0; trk < TRACKS; ++trk) {
+        if (trk == selected_track) continue;
+        const Track& other = tracks[trk];
+        if (other.muted || !other.occupied) continue;
+        for (uint16_t i = 0; i < other.event_count; ++i) {
+            const NoteEvent& event = other.events[i];
+            if (event.end_ms <= composer_view_start_ms || event.start_ms >= view_end) continue;
+            int left = composer_x_for_time(event.start_ms);
+            int right = composer_x_for_time(event.end_ms);
+            loop_logic::ensure_note_visual_width(left, right, roll_left + 1, roll_right);
+            int semitone = event.midi_note - pitch_low;
+            if (semitone < 0) semitone = 0;
+            if (semitone >= loop_logic::PITCH_WINDOW_SEMITONES)
+                semitone = loop_logic::PITCH_WINDOW_SEMITONES - 1;
+            int note_y = 134 - (semitone * 100) / (loop_logic::PITCH_WINDOW_SEMITONES - 1);
+            if (note_y < roll_top + 4) note_y = roll_top + 4;
+            if (note_y > roll_bottom - 4) note_y = roll_bottom - 4;
+            fill_rect(target, left + 1, note_y - 3, right - 1, note_y + 3, ghost_fill);
+            draw_hollow_rect(target, left, note_y - 4, right, note_y + 4, ghost_border);
+            if (right - left >= 6) {
+                char pitch_lbl[4];
+                snprintf(pitch_lbl, sizeof(pitch_lbl), "%d", (int)event.midi_note % 12);
+                draw_text_bitmap(target, loop_logic::centered_note_label_x(left, right, event.midi_note),
+                                 note_y - 2, pitch_lbl, ghost_text, 1);
+            }
+        }
+    }
+
+    // Notas de la pista activa
+    const u16 note_fill_sel = BIT(15) | RGB15(26, 31, 20);
     const u16 note_border = BIT(15) | RGB15(10, 16, 24);
+    const u16 note_border_sel = BIT(15) | RGB15(31, 31, 24);
     for (uint16_t i = 0; i < selected.event_count; ++i) {
         const NoteEvent& event = selected.events[i];
         if (event.end_ms <= composer_view_start_ms || event.start_ms >= view_end) continue;
@@ -1610,16 +1806,33 @@ static void draw_composer_touch_screen(u16* target, u16 panel, u16 panel_alt,
         int note_y = 134 - (semitone * 100) / (loop_logic::PITCH_WINDOW_SEMITONES - 1);
         if (note_y < roll_top + 4) note_y = roll_top + 4;
         if (note_y > roll_bottom - 4) note_y = roll_bottom - 4;
-        bool is_selected = (int)i == composer_selected_note;
+        bool is_selected = composer_selection.is_selected(i) || (int)i == composer_selected_note;
         u16 fill = is_selected ? note_fill_sel : green;
+        u16 border = is_selected ? note_border_sel : note_border;
         fill_rect(target, left + 1, note_y - 3, right - 1, note_y + 3, fill);
-        draw_hollow_rect(target, left, note_y - 4, right, note_y + 4, note_border);
+        draw_hollow_rect(target, left, note_y - 4, right, note_y + 4, border);
+        if (is_selected) {
+            fill_rect(target, left, note_y - 3, left + 1, note_y + 3, BIT(15) | RGB15(31, 31, 31));
+            fill_rect(target, right - 1, note_y - 3, right, note_y + 3, BIT(15) | RGB15(31, 31, 31));
+        }
         if (right - left >= 6) {
             char pitch_lbl[4];
             snprintf(pitch_lbl, sizeof(pitch_lbl), "%d", (int)event.midi_note % 12);
             draw_text_bitmap(target, loop_logic::centered_note_label_x(left, right, event.midi_note),
                              note_y - 2, pitch_lbl, panel, 1);
         }
+    }
+
+    if (rect_select_active) {
+        int rx0 = rect_select_start_x < rect_select_cur_x ? rect_select_start_x : rect_select_cur_x;
+        int rx1 = rect_select_start_x > rect_select_cur_x ? rect_select_start_x : rect_select_cur_x;
+        int ry0 = rect_select_start_y < rect_select_cur_y ? rect_select_start_y : rect_select_cur_y;
+        int ry1 = rect_select_start_y > rect_select_cur_y ? rect_select_start_y : rect_select_cur_y;
+        if (rx0 < roll_left + 1) rx0 = roll_left + 1;
+        if (rx1 > roll_right) rx1 = roll_right;
+        if (ry0 < roll_top) ry0 = roll_top;
+        if (ry1 > roll_bottom) ry1 = roll_bottom;
+        draw_hollow_rect(target, rx0, ry0, rx1, ry1, BIT(15) | RGB15(31, 31, 15));
     }
 
     if (composer_keyboard_dragging && composer_keyboard_track >= 0 && composer_keyboard_key >= 0) {
@@ -1655,43 +1868,6 @@ static void draw_composer_touch_screen(u16* target, u16 panel, u16 panel_alt,
     const u16 piano_white = BIT(15) | RGB15(5, 8, 14);
     const u16 piano_sharp = BIT(15) | RGB15(3, 4, 8);
     const u16 piano_sep = BIT(15) | RGB15(2, 3, 6);
-
-    if (detail_note_active && composer_selected_note >= 0 &&
-        composer_selected_note < selected.event_count) {
-        fill_rect(target, 0, COMPOSER_KEYBOARD_TOP, 255, 191, piano_sep);
-        for (int x = 0; x < 256; ++x) {
-            target[COMPOSER_KEYBOARD_TOP * 256 + x] = note_border;
-            target[155 * 256 + x] = note_border;
-            target[191 * 256 + x] = note_border;
-        }
-        draw_text_bitmap(target, 6, 146, "DETAIL 2P", green, 1);
-        draw_text_bitmap(target, 62, 146, "DRAG MOVE/LEN  A OK  B DEL", text, 1);
-
-        uint32_t detail_span = pulse_ms * 2u;
-        if (detail_span == 0) detail_span = 1000u;
-        int d_width = roll_right - roll_left;
-        for (int sub = 0; sub <= 8; ++sub) {
-            int gx = roll_left + (sub * d_width) / 8;
-            u16 gcol = (sub % 4 == 0) ? accent : ((sub % 2 == 0) ? beat : subdivision);
-            for (int gy = 156; gy <= 190; ++gy)
-                if ((sub % 4 == 0) || ((gy & 1) == 0)) target[gy * 256 + gx] = gcol;
-        }
-        const NoteEvent& ev = selected.events[composer_selected_note];
-        int nleft = roll_left + (int)(((int64_t)ev.start_ms - (int64_t)detail_view_start_ms) * d_width / (int64_t)detail_span);
-        int nright = roll_left + (int)(((int64_t)ev.end_ms - (int64_t)detail_view_start_ms) * d_width / (int64_t)detail_span);
-        if (nleft < roll_left) nleft = roll_left;
-        if (nright > roll_right) nright = roll_right;
-        if (nright < nleft + 6) nright = nleft + 6 <= roll_right ? nleft + 6 : roll_right;
-        fill_rect(target, nleft, 172, nright, 184, green);
-        draw_hollow_rect(target, nleft, 171, nright, 185, note_border);
-        fill_rect(target, nleft + 1, 172, nleft + 2, 184, text);
-        fill_rect(target, nright - 2, 172, nright - 1, 184, text);
-        char p_lbl[4];
-        snprintf(p_lbl, sizeof(p_lbl), "%d", (int)ev.midi_note % 12);
-        draw_text_bitmap(target, loop_logic::centered_note_label_x(nleft, nright, ev.midi_note),
-                         176, p_lbl, panel, 1);
-        return;
-    }
 
     fill_rect(target, 0, COMPOSER_KEYBOARD_TOP, 255, 191, panel);
     for (int x = 0; x < 256; ++x) {
@@ -1877,25 +2053,28 @@ static void draw_top(bool show_help) {
         snprintf(trk_digit, sizeof(trk_digit), "%d", selected_track + 1);
         draw_text_bitmap(top_bitmap, 88, 7, trk_digit, text, 1);
         draw_text_bitmap(top_bitmap, 100, 7, paused ? "||" : ">", paused ? accent : green, 1);
+        char time_sig_top[8];
+        snprintf(time_sig_top, sizeof(time_sig_top), "%d/4", (int)beats_per_bar);
+        draw_text_bitmap(top_bitmap, 116, 7, time_sig_top, green, 1);
 
         if (show_help) {
             fill_rect(top_bitmap, 4, 30, 251, 188, panel);
             draw_hollow_rect(top_bitmap, 4, 30, 251, 188, line);
-            draw_text_bitmap(top_bitmap, 10, 35, "CONTROLS", text, 1);
-            draw_text_bitmap(top_bitmap, 10, 45, "ARROWS TRACK/NOTE/MOVE", text, 1);
-            draw_text_bitmap(top_bitmap, 10, 55, "SELECT HOLD HELP", text, 1);
-            draw_text_bitmap(top_bitmap, 10, 65, "SELECT TAP MUTE", text, 1);
-            draw_text_bitmap(top_bitmap, 10, 75, "START PLAY/PAUSE", text, 1);
-            draw_text_bitmap(top_bitmap, 10, 85, "A REC / ACCEPT DETAIL", text, 1);
-            draw_text_bitmap(top_bitmap, 10, 95, "B DELETE NOTE", text, 1);
-            draw_text_bitmap(top_bitmap, 10, 105, "TOUCH 0-11 DRAG TO ROLL", text, 1);
-            draw_text_bitmap(top_bitmap, 10, 115, "TOUCH +/- OCTAVE", text, 1);
-            draw_text_bitmap(top_bitmap, 10, 125, "TOUCH NOTE OPEN DETAIL 2P", text, 1);
-            draw_text_bitmap(top_bitmap, 10, 135, "DETAIL DRAG MOVE/RESIZE", text, 1);
-            draw_text_bitmap(top_bitmap, 10, 145, "EMPTY TOUCH: KEYBOARD", text, 1);
-            draw_text_bitmap(top_bitmap, 10, 155, "X TIMBRE  Y LOOP", text, 1);
-            draw_text_bitmap(top_bitmap, 10, 165, "L+B UNDO  R+B CLEAR", text, 1);
-            draw_text_bitmap(top_bitmap, 10, 175, "NUMBERS ONLY", green, 1);
+            draw_text_bitmap(top_bitmap, 10, 34, "CONTROLS", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 44, "D-PAD: PITCH U/D  MOVE L/R", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 54, "L + D-PAD L/R: RESIZE DURATION", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 64, "R + D-PAD L/R: TEMPO BPM", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 74, "A: STAMP NOTE  L+A: CLONE BLOCK", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 84, "B: DELETE NOTE OR BLOCK", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 94, "L + STYLUS: RECT MULTI-SELECT", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 104, "STYLUS ON NOTE: MOVE / RESIZE", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 114, "STYLUS EMPTY: TIME / PITCH PAN", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 124, "START: CONTEXT PLAY / PAUSE", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 134, "X: TIMBRE (10)  Y: LOOP", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 144, "L+B: UNDO  R+B: CLEAR  R: CLK", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 154, "SELECT HOLD: HELP  TAP: MUTE", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 164, "BAR HEADER: TAP 4/4 OR BPM", text, 1);
+            draw_text_bitmap(top_bitmap, 10, 175, "NUMBERS ONLY: INTERVALS 0-11", green, 1);
             dmaCopy(top_framebuffer, top_vram, 256 * 192 * sizeof(u16));
             return;
         }
@@ -1926,8 +2105,9 @@ static void draw_top(bool show_help) {
             top_bitmap[184 * 256 + x] = line;
         }
         char pulse_text[48];
-        snprintf(pulse_text, sizeof(pulse_text), "PULSE %lu S  %s  VIB %u  SUS %u",
-                 (unsigned long)pulse_ms, loop_enabled ? "LOOP" : "ONCE",
+        snprintf(pulse_text, sizeof(pulse_text), "%lu BPM  %d/4  %s  VIB %u  SUS %u",
+                 (unsigned long)loop_logic::bpm_for_pulse_ms(pulse_ms), (int)beats_per_bar,
+                 loop_enabled ? "LOOP" : "ONCE",
                  (unsigned)vibrato_depth_level, (unsigned)(sustain_release_level + 1));
         draw_text_bitmap(top_bitmap, 9, 175, pulse_text, text, 1);
         dmaCopy(top_framebuffer, top_vram, 256 * 192 * sizeof(u16));
@@ -2680,107 +2860,123 @@ int main() {
             loop_button_direction_used = false;
         }
         if (!trim_active && (pressed & KEY_UP)) {
-            if (focus_timeline && (held & KEY_L)) {
-                composer_view_ms = loop_logic::adjust_composer_view(composer_view_ms, 1);
-                composer_view_start_ms = loop_logic::clamp_composer_start(
-                    composer_view_start_ms, composer_content_duration_ms(), composer_view_ms);
-                bottom_needs_redraw = true;
-                DS_TRACE("DSDBG|VIEW_ZOOM|duration=%lu\n", (unsigned long)composer_view_ms);
-            } else if (focus_timeline && composer_selected_note >= 0 &&
-                       composer_selected_note < tracks[selected_track].event_count) {
-                NoteEvent& event = tracks[selected_track].events[composer_selected_note];
-                if (loop_logic::adjust_note_pitch(event, 1)) {
+            if (focus_timeline && (composer_selection.has_selection() || composer_selected_note >= 0)) {
+                if (!composer_selection.has_selection() && composer_selected_note >= 0)
+                    composer_selection.select_single((uint16_t)composer_selected_note);
+                if (loop_logic::transpose_selection(tracks[selected_track], composer_selection, 1)) {
+                    int first_sel = composer_selection.first_selected_index();
+                    if (first_sel >= 0) play_preview_midi(tracks[selected_track].events[first_sel].midi_note);
                     persist_active_song();
                     bottom_needs_redraw = true;
                     DS_TRACE("DSDBG|NOTE_PITCH|track=%d|event=%d|midi=%d\n",
-                             selected_track, composer_selected_note, event.midi_note);
+                             selected_track, first_sel,
+                             first_sel >= 0 ? tracks[selected_track].events[first_sel].midi_note : 0);
                 }
             } else if (focus_timeline) {
                 selected_track = loop_logic::wrap_track(selected_track, -1);
                 composer_selected_note = -1;
-                detail_note_active = false;
+                composer_selection.clear();
                 phrase_picker_selected = -1;
                 bottom_needs_redraw = true;
             } else if (octave < 6) ++octave;
         }
         if (!trim_active && (pressed & KEY_DOWN)) {
-            if (focus_timeline && (held & KEY_L)) {
-                composer_view_ms = loop_logic::adjust_composer_view(composer_view_ms, -1);
-                composer_view_start_ms = loop_logic::clamp_composer_start(
-                    composer_view_start_ms, composer_content_duration_ms(), composer_view_ms);
-                bottom_needs_redraw = true;
-                DS_TRACE("DSDBG|VIEW_ZOOM|duration=%lu\n", (unsigned long)composer_view_ms);
-            } else if (focus_timeline && composer_selected_note >= 0 &&
-                       composer_selected_note < tracks[selected_track].event_count) {
-                NoteEvent& event = tracks[selected_track].events[composer_selected_note];
-                if (loop_logic::adjust_note_pitch(event, -1)) {
+            if (focus_timeline && (composer_selection.has_selection() || composer_selected_note >= 0)) {
+                if (!composer_selection.has_selection() && composer_selected_note >= 0)
+                    composer_selection.select_single((uint16_t)composer_selected_note);
+                if (loop_logic::transpose_selection(tracks[selected_track], composer_selection, -1)) {
+                    int first_sel = composer_selection.first_selected_index();
+                    if (first_sel >= 0) play_preview_midi(tracks[selected_track].events[first_sel].midi_note);
                     persist_active_song();
                     bottom_needs_redraw = true;
                     DS_TRACE("DSDBG|NOTE_PITCH|track=%d|event=%d|midi=%d\n",
-                             selected_track, composer_selected_note, event.midi_note);
+                             selected_track, first_sel,
+                             first_sel >= 0 ? tracks[selected_track].events[first_sel].midi_note : 0);
                 }
             } else if (focus_timeline) {
                 selected_track = loop_logic::wrap_track(selected_track, 1);
                 composer_selected_note = -1;
-                detail_note_active = false;
+                composer_selection.clear();
                 phrase_picker_selected = -1;
                 bottom_needs_redraw = true;
             } else if (octave > 2) --octave;
         }
         if (trim_active && (pressed & KEY_UP) && trim_repeat_count < 99) ++trim_repeat_count;
         if (trim_active && (pressed & KEY_DOWN) && trim_repeat_count > 1) --trim_repeat_count;
-        if (!trim_active && !(held & KEY_TOUCH) && !(held & KEY_L)) {
+        if (!trim_active && !(held & KEY_TOUCH)) {
             if (pressed & KEY_LEFT) {
-                if (focus_timeline && composer_selected_note >= 0 &&
-                    composer_selected_note < tracks[selected_track].event_count) {
-                    NoteEvent& ev = tracks[selected_track].events[composer_selected_note];
+                if (focus_timeline && (held & KEY_R)) {
+                    r_button_direction_used = true;
+                    apply_tempo_change(-1);
+                } else if (focus_timeline && (composer_selection.has_selection() || composer_selected_note >= 0)) {
+                    if (!composer_selection.has_selection() && composer_selected_note >= 0)
+                        composer_selection.select_single((uint16_t)composer_selected_note);
                     uint32_t step_ms = pulse_ms / 4u > 0 ? pulse_ms / 4u : 125u;
-                    uint32_t req = ev.start_ms > step_ms ? ev.start_ms - step_ms : 0;
-                    if (loop_logic::edit_note_event(tracks[selected_track],
-                                                    (uint16_t)composer_selected_note,
-                                                    loop_logic::NOTE_MOVE, req, 0,
-                                                    COMPOSER_CONTENT_LIMIT_MS, pulse_ms, true)) {
-                        update_detail_view_for_note(ev);
-                        persist_active_song();
+                    if (held & KEY_L) {
+                        loop_logic::resize_selection_duration(tracks[selected_track], composer_selection,
+                                                             -(int32_t)step_ms, step_ms, COMPOSER_CONTENT_LIMIT_MS);
+                    } else {
+                        loop_logic::move_selection_time(tracks[selected_track], composer_selection,
+                                                       -(int32_t)step_ms, COMPOSER_CONTENT_LIMIT_MS);
+                    }
+                    persist_active_song();
+                    bottom_needs_redraw = true;
+                } else if (focus_timeline) {
+                    if (held & KEY_L) {
+                        composer_view_ms = loop_logic::adjust_composer_view(composer_view_ms, 1);
+                        composer_view_start_ms = loop_logic::clamp_composer_start(
+                            composer_view_start_ms, composer_content_duration_ms(), composer_view_ms);
                         bottom_needs_redraw = true;
-                        DS_TRACE("DSDBG|NOTE_NUDGE|track=%d|event=%d|start=%lu|end=%lu\n",
-                                 selected_track, composer_selected_note,
-                                 (unsigned long)ev.start_ms, (unsigned long)ev.end_ms);
+                    } else {
+                        uint32_t bar_dur = loop_logic::bar_duration_ms(pulse_ms, beats_per_bar);
+                        if (bar_dur == 0) bar_dur = 2000;
+                        if (composer_view_start_ms >= bar_dur) composer_view_start_ms -= bar_dur;
+                        else composer_view_start_ms = 0;
+                        transport_ms = composer_view_start_ms;
+                        bottom_needs_redraw = true;
                     }
                 } else {
                     selected_track = loop_logic::wrap_track(selected_track, -1);
                     composer_selected_note = -1;
-                    detail_note_active = false;
-                    if (focus_timeline) phrase_picker_selected = -1;
+                    composer_selection.clear();
                     bottom_needs_redraw = true;
                     if (held & KEY_Y) loop_button_direction_used = true;
                 }
             }
             if (pressed & KEY_RIGHT) {
-                if (focus_timeline && composer_selected_note >= 0 &&
-                    composer_selected_note < tracks[selected_track].event_count) {
-                    NoteEvent& ev = tracks[selected_track].events[composer_selected_note];
+                if (focus_timeline && (held & KEY_R)) {
+                    r_button_direction_used = true;
+                    apply_tempo_change(1);
+                } else if (focus_timeline && (composer_selection.has_selection() || composer_selected_note >= 0)) {
+                    if (!composer_selection.has_selection() && composer_selected_note >= 0)
+                        composer_selection.select_single((uint16_t)composer_selected_note);
                     uint32_t step_ms = pulse_ms / 4u > 0 ? pulse_ms / 4u : 125u;
-                    uint32_t req = ev.start_ms + step_ms;
-                    if (loop_logic::edit_note_event(tracks[selected_track],
-                                                    (uint16_t)composer_selected_note,
-                                                    loop_logic::NOTE_MOVE, req, 0,
-                                                    COMPOSER_CONTENT_LIMIT_MS, pulse_ms, true)) {
-                        if (tracks[selected_track].duration_ms < ev.end_ms)
-                            tracks[selected_track].duration_ms =
-                                loop_logic::snap_loop_duration(ev.end_ms, pulse_ms);
-                        update_detail_view_for_note(ev);
-                        persist_active_song();
+                    if (held & KEY_L) {
+                        loop_logic::resize_selection_duration(tracks[selected_track], composer_selection,
+                                                             (int32_t)step_ms, step_ms, COMPOSER_CONTENT_LIMIT_MS);
+                    } else {
+                        loop_logic::move_selection_time(tracks[selected_track], composer_selection,
+                                                       (int32_t)step_ms, COMPOSER_CONTENT_LIMIT_MS);
+                    }
+                    persist_active_song();
+                    bottom_needs_redraw = true;
+                } else if (focus_timeline) {
+                    if (held & KEY_L) {
+                        composer_view_ms = loop_logic::adjust_composer_view(composer_view_ms, -1);
+                        composer_view_start_ms = loop_logic::clamp_composer_start(
+                            composer_view_start_ms, composer_content_duration_ms(), composer_view_ms);
                         bottom_needs_redraw = true;
-                        DS_TRACE("DSDBG|NOTE_NUDGE|track=%d|event=%d|start=%lu|end=%lu\n",
-                                 selected_track, composer_selected_note,
-                                 (unsigned long)ev.start_ms, (unsigned long)ev.end_ms);
+                    } else {
+                        uint32_t bar_dur = loop_logic::bar_duration_ms(pulse_ms, beats_per_bar);
+                        if (bar_dur == 0) bar_dur = 2000;
+                        composer_view_start_ms += bar_dur;
+                        transport_ms = composer_view_start_ms;
+                        bottom_needs_redraw = true;
                     }
                 } else {
                     selected_track = loop_logic::wrap_track(selected_track, 1);
                     composer_selected_note = -1;
-                    detail_note_active = false;
-                    if (focus_timeline) phrase_picker_selected = -1;
+                    composer_selection.clear();
                     bottom_needs_redraw = true;
                     if (held & KEY_Y) loop_button_direction_used = true;
                 }
@@ -2793,15 +2989,21 @@ int main() {
                 trim_preview_started_ms = now_ms();
                 trim_editor_dirty = true;
             } else {
-                if (paused && transport_finished) {
-                    uint32_t window_start = 0;
-                    uint32_t window_end = 0;
-                    playback_window(window_start, window_end);
-                    transport_ms = window_start;
-                }
                 paused = !paused;
-                if (paused) update_loops();
-                else transport_finished = false;
+                if (!paused) {
+                    if (focus_timeline) {
+                        transport_ms = loop_logic::contextual_playback_start(
+                            transport_ms, composer_selection, tracks[selected_track], pulse_ms, beats_per_bar);
+                    } else if (transport_finished) {
+                        uint32_t window_start = 0;
+                        uint32_t window_end = 0;
+                        playback_window(window_start, window_end);
+                        transport_ms = window_start;
+                    }
+                    transport_finished = false;
+                } else {
+                    update_loops();
+                }
                 bottom_needs_redraw = true;
             }
         }
@@ -2831,10 +3033,9 @@ int main() {
             refresh_live_timbre();
             bottom_needs_redraw = true;
         }
-        if ((pressed & KEY_R) && !(held & KEY_B)) {
-            metronome_enabled = !metronome_enabled;
-            if (!metronome_enabled) stop_metronome_voice();
-            bottom_needs_redraw = true;
+        if (!trim_active && (pressed & KEY_R)) {
+            r_button_pending = true;
+            r_button_direction_used = false;
         }
         sustain_active = (held & KEY_L) != 0;
         if (trim_active && (pressed & KEY_L) && trim_selected_event >= 0) {
@@ -2862,17 +3063,67 @@ int main() {
             loop_button_pending = false;
             loop_button_direction_used = false;
         }
+        if (loop_logic::should_toggle_metronome_on_release(
+                r_button_pending, r_button_direction_used, (released & KEY_R) != 0)) {
+            metronome_enabled = !metronome_enabled;
+            if (!metronome_enabled) stop_metronome_voice();
+            r_button_pending = false;
+            r_button_direction_used = false;
+            bottom_needs_redraw = true;
+        } else if ((released & KEY_R) != 0) {
+            r_button_pending = false;
+            r_button_direction_used = false;
+        }
         if (pressed & KEY_A) {
             if (trim_active) accept_trim();
             else if (recording) stop_recording(now);
-            else if (focus_timeline && detail_note_active) {
-                detail_note_active = false;
-                bottom_needs_redraw = true;
-                DS_TRACE("DSDBG|NOTE_EDIT_CLOSE|track=%d|event=%d\n",
-                         selected_track, composer_selected_note);
-            } else if (focus_timeline && composer_selected_note >= 0 &&
-                       composer_selected_note < tracks[selected_track].event_count) {
-                open_direct_note_editor((uint16_t)composer_selected_note);
+            else if (focus_timeline && (held & KEY_L)) {
+                if (loop_logic::clone_last_bar_or_selection(tracks[selected_track], composer_selection,
+                                                           pulse_ms, beats_per_bar, COMPOSER_CONTENT_LIMIT_MS)) {
+                    composer_selected_note = composer_selection.first_selected_index();
+                    persist_active_song();
+                    bottom_needs_redraw = true;
+                    DS_TRACE("DSDBG|CLONE_BLOCK|track=%d|count=%u\n", selected_track, (unsigned)composer_selection.count);
+                }
+            } else if (focus_timeline) {
+                Track& trk = tracks[selected_track];
+                int stamp_midi = last_played_valid ? last_played_midi : loop_logic::midi_for_key(octave, 0);
+                uint32_t stamp_start = 0;
+                uint32_t stamp_duration = pulse_ms;
+                loop_logic::PulseGrid grid{pulse_ms};
+                if (composer_selection.has_selection()) {
+                    uint32_t max_end = 0;
+                    for (uint16_t i = 0; i < trk.event_count; ++i) {
+                        if (composer_selection.is_selected(i) && trk.events[i].end_ms > max_end) {
+                            max_end = trk.events[i].end_ms;
+                            stamp_duration = trk.events[i].end_ms - trk.events[i].start_ms;
+                        }
+                    }
+                    stamp_start = grid.snap(max_end);
+                } else if (trk.event_count > 0) {
+                    stamp_start = grid.snap(trk.duration_ms);
+                } else {
+                    stamp_start = grid.snap(composer_view_start_ms);
+                }
+                if (stamp_duration == 0) stamp_duration = pulse_ms;
+                uint32_t stamp_end = stamp_start + stamp_duration;
+                if (trk.event_count < loop_logic::MAX_TRACK_EVENTS) {
+                    uint16_t n_idx = trk.event_count;
+                    trk.events[n_idx] = {stamp_start, stamp_end, (int16_t)stamp_midi, (uint8_t)timbre, 0, 0};
+                    trk.event_count++;
+                    if (stamp_end > trk.duration_ms) trk.duration_ms = stamp_end;
+                    trk.occupied = true;
+                    composer_selection.select_single(n_idx);
+                    composer_selected_note = (int)n_idx;
+                    if (stamp_end > composer_view_start_ms + composer_view_ms) {
+                        composer_view_start_ms = stamp_start;
+                    }
+                    play_preview_midi(stamp_midi);
+                    persist_active_song();
+                    bottom_needs_redraw = true;
+                    DS_TRACE("DSDBG|NOTE_STAMP|track=%d|midi=%d|start=%lu\n",
+                             selected_track, stamp_midi, (unsigned long)stamp_start);
+                }
             } else if (!focus_timeline) {
                 start_recording(now);
             }
@@ -2882,20 +3133,28 @@ int main() {
             if (held & KEY_L) {
                 undo_recording();
                 composer_selected_note = -1;
-                detail_note_active = false;
+                composer_selection.clear();
                 bottom_needs_redraw = true;
             } else if (held & KEY_R) {
+                r_button_direction_used = true;
                 clear_selected();
                 composer_selected_note = -1;
-                detail_note_active = false;
+                composer_selection.clear();
                 bottom_needs_redraw = true;
+            } else if (composer_selection.has_selection()) {
+                Track& target = tracks[selected_track];
+                uint16_t del_count = loop_logic::delete_selection(target, composer_selection);
+                composer_selected_note = -1;
+                persist_active_song();
+                bottom_needs_redraw = true;
+                DS_TRACE("DSDBG|SELECTION_DELETE|track=%d|count=%u\n", selected_track, (unsigned)del_count);
             } else if (composer_selected_note >= 0 &&
                        composer_selected_note < tracks[selected_track].event_count) {
                 Track& target = tracks[selected_track];
                 int deleted = composer_selected_note;
                 if (loop_logic::delete_note_event(target, (uint16_t)deleted)) {
                     composer_selected_note = -1;
-                    detail_note_active = false;
+                    composer_selection.clear();
                     phrase_picker_selected = -1;
                     persist_active_song();
                     bottom_needs_redraw = true;
@@ -3023,6 +3282,46 @@ int main() {
                 trim_touch_editing = false;
                 trim_touch_free_changed = false;
             }
+        } else if (focus_timeline && rect_select_active && (held & KEY_TOUCH)) {
+            rect_select_cur_x = touch.px;
+            rect_select_cur_y = touch.py;
+            bottom_needs_redraw = true;
+        } else if (focus_timeline && rect_select_active && !(held & KEY_TOUCH)) {
+            int rx0 = rect_select_start_x < rect_select_cur_x ? rect_select_start_x : rect_select_cur_x;
+            int rx1 = rect_select_start_x > rect_select_cur_x ? rect_select_start_x : rect_select_cur_x;
+            int ry0 = rect_select_start_y < rect_select_cur_y ? rect_select_start_y : rect_select_cur_y;
+            int ry1 = rect_select_start_y > rect_select_cur_y ? rect_select_start_y : rect_select_cur_y;
+            uint32_t r_start = composer_time_for_x(rx0);
+            uint32_t r_end = composer_time_for_x(rx1);
+            int semitone_high = ((134 - ry0) * (loop_logic::PITCH_WINDOW_SEMITONES - 1) + 50) / 100;
+            int semitone_low = ((134 - ry1) * (loop_logic::PITCH_WINDOW_SEMITONES - 1) + 50) / 100;
+            int m_low = composer_pitch_window_low + semitone_low;
+            int m_high = composer_pitch_window_low + semitone_high;
+            composer_selection.clear();
+            loop_logic::select_notes_in_rect(composer_selection, tracks[selected_track], r_start, r_end, m_low, m_high);
+            composer_selected_note = composer_selection.first_selected_index();
+            rect_select_active = false;
+            bottom_needs_redraw = true;
+        } else if (focus_timeline && composer_panning && (held & KEY_TOUCH)) {
+            int dx = (int)touch.px - pan_last_x;
+            int dy = (int)touch.py - pan_last_y;
+            pan_last_x = touch.px;
+            pan_last_y = touch.py;
+            if (dx != 0) {
+                int width = loop_logic::COMPOSER_TIMELINE_RIGHT_X - loop_logic::COMPOSER_TIMELINE_LEFT_X;
+                int64_t d_ms = -((int64_t)dx * (int64_t)composer_view_ms) / width;
+                int64_t n_start = (int64_t)composer_view_start_ms + d_ms;
+                if (n_start < 0) n_start = 0;
+                composer_view_start_ms = (uint32_t)n_start;
+            }
+            if (dy != 0) {
+                int pitch_delta = (dy * 24) / 80;
+                composer_pitch_window_low = loop_logic::clamp_pitch_window_low(composer_pitch_window_low + pitch_delta);
+            }
+            bottom_needs_redraw = true;
+        } else if (focus_timeline && composer_panning && !(held & KEY_TOUCH)) {
+            composer_panning = false;
+            bottom_needs_redraw = true;
         } else if (focus_timeline && composer_ruler_seeking && (held & KEY_TOUCH)) {
             if (touch.px >= loop_logic::COMPOSER_TIMELINE_LEFT_X) {
                 transport_ms = composer_time_for_x(touch.px);
@@ -3037,52 +3336,48 @@ int main() {
                 composer_selected_note < tracks[selected_track].event_count &&
                 touch.px >= loop_logic::COMPOSER_TIMELINE_LEFT_X &&
                 touch.px <= loop_logic::COMPOSER_TIMELINE_RIGHT_X) {
-                uint32_t current_ms = 0;
-                if (detail_note_active && touch.py >= COMPOSER_KEYBOARD_TOP) {
-                    uint32_t detail_span = pulse_ms * 2u > 0 ? pulse_ms * 2u : 1000u;
-                    int d_width = loop_logic::COMPOSER_TIMELINE_RIGHT_X - loop_logic::COMPOSER_TIMELINE_LEFT_X;
-                    current_ms = detail_view_start_ms +
-                        (uint32_t)(((uint64_t)(touch.px - loop_logic::COMPOSER_TIMELINE_LEFT_X) * detail_span) /
-                                   (uint32_t)d_width);
-                } else {
-                    current_ms = composer_time_for_x(touch.px);
-                }
-                uint32_t base_ms = (composer_edit_mode == loop_logic::NOTE_END)
-                    ? composer_drag_original_end_ms : composer_drag_original_start_ms;
-                int64_t requested = (int64_t)base_ms +
-                    (int64_t)current_ms - (int64_t)composer_drag_origin_ms;
-                if (requested < 0) requested = 0;
-                if (loop_logic::edit_note_event(
-                        tracks[selected_track], (uint16_t)composer_selected_note,
-                        composer_edit_mode, (uint32_t)requested, 0,
-                        COMPOSER_CONTENT_LIMIT_MS, pulse_ms, false)) {
+                uint32_t current_ms = composer_time_for_x(touch.px);
+                if (composer_edit_mode == loop_logic::NOTE_MOVE) {
+                    int64_t delta_ms = (int64_t)current_ms - (int64_t)composer_drag_origin_ms;
+                    int64_t req_start = (int64_t)composer_drag_original_start_ms + delta_ms;
+                    if (req_start < 0) req_start = 0;
+                    uint32_t dur = composer_drag_original_end_ms > composer_drag_original_start_ms
+                        ? composer_drag_original_end_ms - composer_drag_original_start_ms : pulse_ms;
+                    int semitone = ((134 - (int)touch.py) * (loop_logic::PITCH_WINDOW_SEMITONES - 1) + 50) / 100;
+                    if (semitone < 0) semitone = 0;
+                    if (semitone >= loop_logic::PITCH_WINDOW_SEMITONES) semitone = loop_logic::PITCH_WINDOW_SEMITONES - 1;
+                    int new_midi = composer_pitch_window_low + semitone;
                     NoteEvent& ev = tracks[selected_track].events[composer_selected_note];
+                    ev.start_ms = (uint32_t)req_start;
+                    ev.end_ms = (uint32_t)req_start + dur;
+                    ev.midi_note = (int16_t)new_midi;
                     if (tracks[selected_track].duration_ms < ev.end_ms)
-                        tracks[selected_track].duration_ms =
-                            loop_logic::snap_loop_duration(ev.end_ms, pulse_ms);
+                        tracks[selected_track].duration_ms = ev.end_ms;
                     composer_drag_changed = true;
                     bottom_needs_redraw = true;
-                    DS_TRACE("DSDBG|NOTE_NUDGE|track=%d|event=%d|start=%lu|end=%lu\n",
-                             selected_track, composer_selected_note,
-                             (unsigned long)ev.start_ms,
-                             (unsigned long)ev.end_ms);
+                } else if (composer_edit_mode == loop_logic::NOTE_END) {
+                    NoteEvent& ev = tracks[selected_track].events[composer_selected_note];
+                    uint32_t min_step = pulse_ms / 4u > 0 ? pulse_ms / 4u : 125u;
+                    if (current_ms > ev.start_ms + min_step) {
+                        ev.end_ms = current_ms;
+                        if (tracks[selected_track].duration_ms < ev.end_ms)
+                            tracks[selected_track].duration_ms = ev.end_ms;
+                        composer_drag_changed = true;
+                        bottom_needs_redraw = true;
+                    }
                 }
             }
         } else if (focus_timeline && composer_dragging_note && !(held & KEY_TOUCH)) {
             if (composer_drag_changed && composer_selected_note >= 0 &&
                 composer_selected_note < tracks[selected_track].event_count) {
                 NoteEvent& event = tracks[selected_track].events[composer_selected_note];
-                uint32_t raw_target = (composer_edit_mode == loop_logic::NOTE_END)
-                    ? event.end_ms : event.start_ms;
-                uint32_t requested = loop_logic::PulseGrid{pulse_ms}.snap(raw_target);
-                if (loop_logic::edit_note_event(
-                        tracks[selected_track], (uint16_t)composer_selected_note,
-                        composer_edit_mode, requested, 0,
-                        COMPOSER_CONTENT_LIMIT_MS, pulse_ms, true)) {
-                    if (tracks[selected_track].duration_ms < event.end_ms)
-                        tracks[selected_track].duration_ms =
-                            loop_logic::snap_loop_duration(event.end_ms, pulse_ms);
-                }
+                loop_logic::PulseGrid grid{pulse_ms};
+                event.start_ms = grid.snap(event.start_ms);
+                uint32_t min_step = pulse_ms / 4u > 0 ? pulse_ms / 4u : 125u;
+                event.end_ms = grid.snap(event.end_ms);
+                if (event.end_ms <= event.start_ms) event.end_ms = event.start_ms + min_step;
+                if (tracks[selected_track].duration_ms < event.end_ms)
+                    tracks[selected_track].duration_ms = loop_logic::snap_loop_duration(event.end_ms, pulse_ms);
                 persist_active_song();
             }
             composer_dragging_note = false;
@@ -3125,7 +3420,12 @@ int main() {
             composer_keyboard_row = -1;
             bottom_needs_redraw = true;
         } else if (focus_timeline && (pressed & KEY_TOUCH)) {
-            if (touch.py >= COMPOSER_RULER_TOP && touch.py <= COMPOSER_RULER_BOTTOM &&
+            if (touch.py >= 4 && touch.py <= 16 && touch.px >= 152 && touch.px < 182) {
+                beats_per_bar = (beats_per_bar == 4) ? 3 : 4;
+                bottom_needs_redraw = true;
+            } else if (touch.py >= 4 && touch.py <= 16 && touch.px >= 182 && touch.px <= 228) {
+                apply_tempo_change(touch.px < 205 ? -1 : 1);
+            } else if (touch.py >= COMPOSER_RULER_TOP && touch.py <= COMPOSER_RULER_BOTTOM &&
                 touch.px >= loop_logic::COMPOSER_TIMELINE_LEFT_X) {
                 composer_ruler_seeking = true;
                 transport_ms = composer_time_for_x(touch.px);
@@ -3141,35 +3441,7 @@ int main() {
                 DS_TRACE("DSDBG|PITCH_PAN_OPEN|y=%d|low=%d\n",
                          touch.py, composer_pitch_window_low);
             } else if (touch.py >= COMPOSER_KEYBOARD_TOP && touch.py < 192) {
-                if (detail_note_active && composer_selected_note >= 0 &&
-                    composer_selected_note < tracks[selected_track].event_count) {
-                    const NoteEvent& ev = tracks[selected_track].events[composer_selected_note];
-                    uint32_t detail_span = pulse_ms * 2u > 0 ? pulse_ms * 2u : 1000u;
-                    int r_left = loop_logic::COMPOSER_TIMELINE_LEFT_X;
-                    int r_right = loop_logic::COMPOSER_TIMELINE_RIGHT_X;
-                    int d_width = r_right - r_left;
-                    int nleft = r_left + (int)(((int64_t)ev.start_ms - (int64_t)detail_view_start_ms) * d_width / (int64_t)detail_span);
-                    int nright = r_left + (int)(((int64_t)ev.end_ms - (int64_t)detail_view_start_ms) * d_width / (int64_t)detail_span);
-                    if (nleft < r_left) nleft = r_left;
-                    if (nright > r_right) nright = r_right;
-                    if (nright < nleft + 6) nright = nleft + 6 <= r_right ? nleft + 6 : r_right;
-                    if ((int)touch.px <= nleft + 6)
-                        composer_edit_mode = loop_logic::NOTE_START;
-                    else if ((int)touch.px >= nright - 6)
-                        composer_edit_mode = loop_logic::NOTE_END;
-                    else
-                        composer_edit_mode = loop_logic::NOTE_MOVE;
-                    composer_dragging_note = true;
-                    composer_drag_changed = false;
-                    int clamped_px = touch.px < r_left ? r_left : (touch.px > r_right ? r_right : touch.px);
-                    composer_drag_origin_ms = detail_view_start_ms +
-                        (uint32_t)(((uint64_t)(clamped_px - r_left) * detail_span) / (uint32_t)d_width);
-                    composer_drag_original_start_ms = ev.start_ms;
-                    composer_drag_original_end_ms = ev.end_ms;
-                    bottom_needs_redraw = true;
-                    DS_TRACE("DSDBG|DETAIL_DRAG_OPEN|track=%d|event=%d|mode=%d\n",
-                             selected_track, composer_selected_note, (int)composer_edit_mode);
-                } else if (touch.px < loop_logic::COMPOSER_TIMELINE_LEFT_X) {
+                if (touch.px < loop_logic::COMPOSER_TIMELINE_LEFT_X) {
                     if (touch.py < 167) {
                         if (octave < 6) ++octave;
                     } else {
@@ -3187,33 +3459,50 @@ int main() {
                     composer_keyboard_track = -1;
                     composer_keyboard_drop_ms = 0;
                     key = composer_keyboard_key;
+                    int note_oct = octave + composer_keyboard_row;
+                    last_played_key = composer_keyboard_key;
+                    last_played_octave = note_oct;
+                    last_played_midi = loop_logic::midi_for_key(note_oct, composer_keyboard_key);
+                    last_played_valid = true;
                     bottom_needs_redraw = true;
                 }
             } else if (touch.py >= 28 && touch.py < COMPOSER_KEYBOARD_TOP) {
-                int direct_index = direct_note_hit(touch.px, touch.py);
-                if (direct_index >= 0) {
-                    composer_selected_note = direct_index;
-                    const NoteEvent& event = tracks[selected_track].events[direct_index];
-                    detail_note_active = true;
-                    update_detail_view_for_note(event);
-                    composer_edit_mode = loop_logic::NOTE_MOVE;
-                    composer_dragging_note = true;
-                    composer_drag_changed = false;
-                    composer_drag_origin_ms = composer_time_for_x(touch.px);
-                    composer_drag_original_start_ms = event.start_ms;
-                    composer_drag_original_end_ms = event.end_ms;
-                    phrase_picker_selected = -1;
+                if (held & KEY_L) {
+                    rect_select_active = true;
+                    rect_select_start_x = touch.px;
+                    rect_select_start_y = touch.py;
+                    rect_select_cur_x = touch.px;
+                    rect_select_cur_y = touch.py;
                     bottom_needs_redraw = true;
-                    DS_TRACE("DSDBG|NOTE_SELECT|track=%d|event=%d\n",
-                             selected_track, direct_index);
                 } else {
-                    if (!detail_note_active) composer_selected_note = -1;
-                    if (composer_selected_note < 0 && tracks[selected_track].event_count == 1)
-                        composer_selected_note = 0;
-                    detail_note_active = false;
-                    composer_dragging_note = false;
-                    bottom_needs_redraw = true;
-                    DS_TRACE("DSDBG|DETAIL_CLOSE|track=%d\n", selected_track);
+                    int direct_index = direct_note_hit(touch.px, touch.py);
+                    if (direct_index >= 0) {
+                        composer_selected_note = direct_index;
+                        composer_selection.select_single((uint16_t)direct_index);
+                        const NoteEvent& event = tracks[selected_track].events[direct_index];
+                        int right_px = composer_x_for_time(event.end_ms);
+                        if ((int)touch.px >= right_px - 5) {
+                            composer_edit_mode = loop_logic::NOTE_END;
+                        } else {
+                            composer_edit_mode = loop_logic::NOTE_MOVE;
+                        }
+                        composer_dragging_note = true;
+                        composer_drag_changed = false;
+                        composer_drag_origin_ms = composer_time_for_x(touch.px);
+                        composer_drag_original_start_ms = event.start_ms;
+                        composer_drag_original_end_ms = event.end_ms;
+                        phrase_picker_selected = -1;
+                        bottom_needs_redraw = true;
+                        DS_TRACE("DSDBG|NOTE_SELECT|track=%d|event=%d\n",
+                                 selected_track, direct_index);
+                    } else {
+                        composer_selected_note = -1;
+                        composer_selection.clear();
+                        composer_panning = true;
+                        pan_last_x = touch.px;
+                        pan_last_y = touch.py;
+                        bottom_needs_redraw = true;
+                    }
                 }
             }
         } else if (!focus_timeline && (held & KEY_TOUCH) && touch.py >= TOUCH_TIMELINE_TOP && touch.py < 192) {
@@ -3251,6 +3540,7 @@ int main() {
         else if (!(held & KEY_TOUCH)) end_live_note(now);
         update_live_effects(now, held);
         update_live_tails(now);
+        update_psg_envelopes(now);
         update_loops();
         update_metronome(now);
         // The top screen is expensive to rasterize and copy. Keep input/audio

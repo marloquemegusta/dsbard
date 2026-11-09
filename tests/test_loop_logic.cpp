@@ -262,5 +262,119 @@ int main() {
     assert(removable.duration_ms == 1000 && removable.occupied);
     assert(delete_note_event(removable, 0));
     assert(removable.event_count == 0 && !removable.occupied && removable.duration_ms == 0);
+
+    // Time signatures and bars
+    assert(bar_duration_ms(500, 4) == 2000);
+    assert(bar_duration_ms(500, 3) == 1500);
+    assert(bar_index_for_time(0, 500, 4) == 0);
+    assert(bar_index_for_time(1999, 500, 4) == 0);
+    assert(bar_index_for_time(2000, 500, 4) == 1);
+    assert(is_bar_even(0, 500, 4));
+    assert(!is_bar_even(2000, 500, 4));
+    assert(is_bar_even(4000, 500, 4));
+    assert(bar_start_time(2, 500, 3) == 3000);
+
+    // NoteSelection and operations
+    Track sel_test{};
+    sel_test.occupied = true;
+    sel_test.event_count = 3;
+    sel_test.events[0] = {0, 500, 60, 0, 0, 0};
+    sel_test.events[1] = {500, 1000, 64, 0, 0, 0};
+    sel_test.events[2] = {1000, 1500, 67, 0, 0, 0};
+    sel_test.duration_ms = 1500;
+
+    NoteSelection sel{};
+    assert(!sel.has_selection());
+    sel.select_single(1);
+    assert(sel.has_selection() && sel.count == 1 && sel.is_selected(1) && !sel.is_selected(0));
+    sel.add(2);
+    assert(sel.count == 2 && sel.is_selected(2));
+
+    // Transpose
+    assert(transpose_selection(sel_test, sel, 2));
+    assert(sel_test.events[0].midi_note == 60);
+    assert(sel_test.events[1].midi_note == 66);
+    assert(sel_test.events[2].midi_note == 69);
+
+    // Move time
+    assert(move_selection_time(sel_test, sel, 250, 60000));
+    assert(sel_test.events[0].start_ms == 0);
+    assert(sel_test.events[1].start_ms == 750 && sel_test.events[1].end_ms == 1250);
+    assert(sel_test.events[2].start_ms == 1250 && sel_test.events[2].end_ms == 1750);
+    assert(sel_test.duration_ms == 1750);
+
+    // Resize duration
+    assert(resize_selection_duration(sel_test, sel, 100, 50, 60000));
+    assert(sel_test.events[1].end_ms == 1350);
+    assert(sel_test.events[2].end_ms == 1850);
+
+    // Selection in rect
+    NoteSelection rect_sel{};
+    select_notes_in_rect(rect_sel, sel_test, 0, 1000, 55, 68);
+    assert(rect_sel.count == 2);
+    assert(rect_sel.is_selected(0) && rect_sel.is_selected(1));
+
+    // Clone selection
+    assert(clone_selection(sel_test, rect_sel, 2000, 60000));
+    assert(sel_test.event_count == 5);
+    assert(rect_sel.count == 2);
+    assert(rect_sel.is_selected(3) && rect_sel.is_selected(4));
+    assert(sel_test.events[3].start_ms == 2000);
+    assert(sel_test.events[4].start_ms == 2750);
+
+    // Clone last bar or selection
+    assert(clone_last_bar_or_selection(sel_test, rect_sel, 500, 4, 60000));
+    assert(sel_test.event_count == 7);
+
+    // Delete selection
+    uint16_t deleted = delete_selection(sel_test, rect_sel);
+    assert(deleted == 2);
+    assert(sel_test.event_count == 5);
+    assert(!rect_sel.has_selection());
+
+    // Contextual playback start
+    NoteSelection ctx_sel{};
+    ctx_sel.select_single(3); // start_ms = 2000 -> bar 1 in 4/4 (2000 ms)
+    assert(contextual_playback_start(1500, ctx_sel, sel_test, 500, 4) == 2000);
+    ctx_sel.clear();
+    assert(contextual_playback_start(2500, ctx_sel, sel_test, 500, 4) == 2000);
+
+    // Tempo conversion and adjustment
+    assert(bpm_for_pulse_ms(500) == 120);
+    assert(pulse_ms_for_bpm(120) == 500);
+    assert(bpm_for_pulse_ms(1000) == 60);
+    assert(pulse_ms_for_bpm(60) == 1000);
+    uint32_t faster_p = adjust_tempo_pulse_ms(500, 1);
+    assert(bpm_for_pulse_ms(faster_p) == 125);
+    uint32_t slower_p = adjust_tempo_pulse_ms(500, -1);
+    assert(bpm_for_pulse_ms(slower_p) == 115);
+
+    // Tempo bounds
+    uint32_t max_p = pulse_ms_for_bpm(240);
+    assert(adjust_tempo_pulse_ms(max_p, 1) == max_p);
+    uint32_t min_p = pulse_ms_for_bpm(60);
+    assert(adjust_tempo_pulse_ms(min_p, -1) == min_p);
+
+    // Track tempo scaling
+    Track tempo_track{};
+    tempo_track.event_count = 2;
+    tempo_track.duration_ms = 2000;
+    tempo_track.events[0] = {0, 500, 60, 0, 0, 0};
+    tempo_track.events[1] = {500, 1000, 64, 0, 0, 0};
+    scale_track_tempo(tempo_track, 500, 1000, 20000); // 120 -> 60 BPM (2x time)
+    assert(tempo_track.events[0].start_ms == 0 && tempo_track.events[0].end_ms == 1000);
+    assert(tempo_track.events[1].start_ms == 1000 && tempo_track.events[1].end_ms == 2000);
+    assert(tempo_track.duration_ms == 4000);
+
+    scale_track_tempo(tempo_track, 1000, 500, 20000); // Back to 120 BPM
+    assert(tempo_track.events[0].start_ms == 0 && tempo_track.events[0].end_ms == 500);
+    assert(tempo_track.events[1].start_ms == 500 && tempo_track.events[1].end_ms == 1000);
+    assert(tempo_track.duration_ms == 2000);
+
+    // Metronome toggle on release
+    assert(should_toggle_metronome_on_release(true, false, true));
+    assert(!should_toggle_metronome_on_release(true, true, true));
+    assert(!should_toggle_metronome_on_release(false, false, true));
+
     return 0;
 }

@@ -10,30 +10,6 @@ Este archivo es la copia versionada del tablero. La interfaz visual es [`KANBAN.
 - `Revisión`: implementación terminada, pendiente de pruebas, revisión o documentación.
 - `Hecho`: criterio de terminado satisfecho y documentación actualizada cuando corresponda.
 - Una tarjeta debe describir una entrega pequeña, tener criterio de terminado y conservar su ID.
-- **K-007 — Sustain: separar duración grabada y cola de reproducción** [bug, audio, grabación] — **Revisión**
-  - Registrar el fin real de la pulsación aunque `L` mantenga una cola, y reproducir esa cola sin convertirla en una nota mantenida durante toda la duración.
-  - Terminado: pruebas host y build correctos; una captura con `L` produce un evento con fin al soltar la franja, conserva el timbre y reproduce una cola limitada por `SUS`; actualizar estado y manual.
-- **K-008 — Y: decidir loop al soltar tras comprobar navegación** [bug, ux, looper] — **Hecho**
-  - Posponer la conmutación de loop hasta soltar `Y`; izquierda/derecha (y el ajuste de frases) consume la pulsación sin apagar el loop.
-  - Terminado: prueba de lógica para soltar `Y` sin acción y para navegar mientras se mantiene; build correcto y comportamiento documentado.
-- **K-009 — Playhead verde en la preview de recorte** [feature, ux, grabación] — **Revisión**
-  - Mostrar una barra verde que avance sobre el gráfico inferior mientras `START` reproduce el rango recortado.
-  - Terminado: la barra sigue el tiempo de preview dentro de `START..END`, desaparece al detener y la documentación queda actualizada.
-## Revisión
-- **K-012 — Rediseño: compositor por descubrimiento de notas y paridad con ROM de la DS** [feature, ux, looper, composición] — **Revisión**
-  - Historia de usuario: al escuchar una canción, quiero probar notas en el teclado de 2 octavas y colocarlas directamente en una línea temporal por pista, con ajuste fino inline (`DETAIL 2P`), vista macro de 20s arriba y los 17 timbres de la ROM de referencia.
-  - Criterio inicial: pantalla de compositor como vista principal tras elegir canción, teclado de 2 octavas con botones `5 +`/`4 -` y sombreado cromático, escala vertical `7..2` con cursor verde, barra inline `DETAIL 2P` al soltar/seleccionar nota, overlay `CONTROLS` al mantener `SELECT`, interpolación en `DRAW A NAME` y 17 timbres (13 PCM extraídos de la ROM buena + 4 PSG).
-  - Alcance, restricciones, escenario de 20 segundos y criterios completos: [`docs/note-composer-redesign-brief.md`](docs/note-composer-redesign-brief.md).
-  - **Fricción observada:** la reconstrucción intermedia abría un teclado antiguo de 12 franjas, ocultaba el compositor tras mantener `SELECT` y abría una pantalla modal `INSERT NOTE` al soltar una nota, rompiendo la fluidez y la estética de la ROM de la DS.
-  - **Entrega completada:** restaurar la apariencia, paleta, simetría, controles (`SELECT_HELP`, `DETAIL 2P`, `5 +`/`4 -`, escala `7..2`, vista macro 20s con viewport verde) y los 17 instrumentos de `recovered/ds-stylophone-from-ds.nds`, puliendo además glifos faltantes (`X`, `:`, `/`, `+`), grosores de líneas y recortes de texto.
-  - **Terminado:** tests host en verde, build BlocksDS sin errores y capturas comparativas de los escenarios de auditoría alineadas en estilo y funcionalidad con la ROM de referencia.
-- **K-005 — Panel FX compacto para vibrato y sustain** [ux, audio]
-  - Quitar glide y reutilizar la franja `160..192`: controles FX en modo normal y timeline de recorte durante la aceptación.
-  - Terminado: vibrato y cola de sustain ajustables con sliders tactiles cuantizados, sustain activado manteniendo `L`, sin tocar las 12 zonas cromaticas; tests, build y documentación actualizados.
-- **K-004 — Corregir píxeles sobrantes en los tiradores de recorte** [bug, ux, grabación]
-  - Separar visualmente los tiradores verdes `START`/`END` de sus etiquetas para que las letras no invadan la barra.
-  - Terminado: tiradores rectangulares sin píxeles salientes en la captura del menú de recorte; pruebas de lógica y build correctas.
-
 
 ## Inbox
 
@@ -45,65 +21,72 @@ Este archivo es la copia versionada del tablero. La interfaz visual es [`KANBAN.
   - Recoger mejoras de controles, ayuda y feedback sin romper la interfaz de 12 zonas.
   - Terminado: Lista priorizada con alcance y criterio de aceptación por idea.
 
-## En curso
-
-- **K-010 — Timeline táctil, metrónomo y corrección rítmica mínima** [feature, ux, looper, ritmo, grabación] — **En curso**
-  - **Fricción observada:** al repetir muchas veces una base no se puede volver inmediatamente al comienzo útil; `LOOP 1` repite las tres copias de una captura `x3` porque la UI muestra tres cajas pero el transporte cuenta una `Phrase` lógica; y el intérprete comete errores grandes de duración o posición que un autoajuste no puede interpretar.
-  - **Objetivo:** sustituir `LOOP N` por una selección temporal directa y reutilizar un reloj global de pulso para transporte, metrónomo audible, referencias visuales y corrección manual. `PULSE` es el periodo real en milisegundos; cada marca emite un pitido breve de 100 ms. `A` y `R` no reinician el reloj: `A` entra en la fase actual y `R` solo silencia/des-silencia. Tocar normalmente no debe exigir compás, proyecto ni editor.
-  - **Conceptos públicos permitidos:**
-    1. `SELECT` mantenido: muestra un selector táctil de frases de las tres pistas y permite abrir el editor común de aceptación para una frase concreta. Estado visible y reversible, no editor genérico.
-    2. `PULSE GRID`: duración del pulso y subdivisión fija de cuatro pasos por pulso. No añadir todavía compás, acentos ternarios/cuaternarios, nombres de notas ni cuantización automática.
-  - **Modelo mínimo:**
-    - `TimelineSelection { cursor_ms, range_start_ms, range_end_ms, explicit_range }`.
-    - `loop_enabled` es independiente. Con loop, al alcanzar `range_end_ms` vuelve a `range_start_ms`; sin loop, se detiene. Sin selección explícita, el rango es `0..song_duration`.
-    - El rango afecta al timeline global y mantiene sincronizadas las tres pistas, aunque se elija sobre la pista seleccionada.
-    - `PulseGrid` convierte sin deriva mediante `time(step) = step * pulse_ms / 4`; no acumular repetidamente `pulse_ms / 4`.
-  - **Pack A, obligatorio primero — timeline táctil y transporte:**
-    - Elegir una acción de un solo botón libre o recolocar explícitamente una función secundaria; no introducir otro acorde. Documentarla en `MANUAL.md`.
-    - El selector de frases muestra las tres pistas y sus frases como cajas táctiles; no añade playhead ni rango global a esta superficie.
-    - Snap híbrido: sin pulso, al borde de caja de repetición más cercano; con rejilla, a cuartos de pulso, dando prioridad a un borde de caja cercano. Una captura `x3` expone tres cajas seleccionables aunque internamente siga siendo una `Phrase` con `repeat_count=3`.
-    - `Y` solo conmuta `LOOP ON/OFF`. Eliminar la interacción y texto público `LOOP N`/`loop_phrase_count`; no hace falta cambiar el almacenamiento de `Phrase` ni desduplicar eventos.
-    - `START` reproduce/pausa. Si terminó, reinicia en `range_start_ms`. Buscar el cursor no apaga el loop ni altera el rango.
-    - Extraer a `include/loop_logic.h` lógica host-testable para normalizar/clamp del rango, fin con/sin loop, bordes de repeticiones expandidas y snap.
-  - **Pack B — pulso compartido:**
-    - Añadir pulso configurable antes de grabar con una interacción pequeña y visible; mostrar primero el concepto cotidiano, por ejemplo `PULSO 1.00 s`. Mantener un valor por defecto y permitir tocar/grabar sin configurarlo.
-    - Durante grabación y reproducción, `PULSE` mantiene la rejilla y emite un clic breve opcional; el clic nunca se guarda como `NoteEvent`.
-    - Dibujar pulsos y cuartos de pulso en el timeline enfocado. Clic y marcas comparten `PulseGrid` y origen temporal.
-    - No añadir compás: ternario/cuaternario solo será necesario para acentos o agrupaciones.
-  - **Pack C — corrección automática y manual de la captura recién grabada:**
-    - Ampliar la aceptación para usar la pantalla táctil; no meter edición nota a nota en los 32 px actuales.
-    - Cada `NoteEvent` es un bloque seleccionable. Ofrecer targets cómodos para moverlo, cambiar `START` y cambiar `END`, en pasos de `1/4` de pulso.
-    - Al cerrar la captura, redondear automáticamente cada inicio y duración al cuarto de pulso más cercano, fijar el ciclo a `N x PULSE` y conservar silencios iniciales/finales; los bordes START/END se ajustan a pulsos completos y los eventos deben seguir sin solaparse.
-    - Los silencios son huecos y no hay ripple. Impedir duración cero, salida del rango y solapamiento con notas vecinas. No modificar pitch, `instrument_id` ni `sustain_on_release`.
-    - `START` alterna preview; `A` acepta; `B` descarta recuperando exactamente la captura original. Conservar repeticiones o recolocarlas en controles táctiles documentados.
-    - Reutilizar `build_trim_preview`, `accept_trim` y `PulseGrid`; no crear otro formato ni motor de playback.
-  - **Pack D, solo tras validar A-C — frases anteriores:**
-    - Desde `SELECT` mantenido, mostrar un selector táctil de las tres pistas; tocar una caja abre el mismo editor de aceptación sobre esa frase aceptada. No crear un segundo editor ni un playhead global.
-    - Para `repeat_count > 1`, editar la fuente y reflejar el cambio en todas sus repeticiones; `B` cancela y `A` reemplaza la frase conservando el orden de la pista.
-  - **Fuera de alcance:** secuenciador general, piano roll por alturas, mover pitch, overdub, persistencia, zoom complejo, compás, cuantización automática global, edición simultánea de varias frases o rediseño de las 12 zonas.
-  - **Orden para el agente:** leer `AGENTS.md`, `STATUS.md`, `KNOWN_ISSUES.md`, `MANUAL.md`, `include/loop_logic.h` y las zonas relevantes de `source/main.cpp`; mover `K-010` a `En curso` antes de editar; implementar y verificar A, luego B y luego C. No iniciar D sin A-C completas. Ante una decisión perceptible no fijada, preguntar.
-  - **Terminado / evidencia para Revisión:**
-    1. Tests host nuevos cubren rango normal/invertido, clamp, seek, reinicio, overshoot en loop, parada sin loop, bordes expandidos de `x3` y conversión step-tiempo sin deriva; los existentes siguen pasando.
-    2. Regresión obligatoria: `Phrase` de 1 s con `repeat_count=3` dibuja tres cajas; seleccionar la tercera da `2 s..3 s`; loop repite solo ese segundo; sin loop para en 3 s; `START` vuelve a 2 s.
-    3. Tres pistas con duraciones distintas obedecen el mismo rango sin reinicios independientes.
-    4. Una nota demasiado larga se acorta varios cuartos y otra se desplaza; no hay solapamiento; preview/aceptación conserva pitch, timbre y sustain; cancelar conserva tiempos originales.
-    5. Añadir trazas temporales bajo `DS_DEBUG_TRACE` para `FOCUS`, `SEEK`, `RANGE`, `WRAP/STOP`, `GRID` y `NOTE_EDIT`, con tiempos y resultado; no mostrar diagnóstico técnico en UI final.
-    6. Ejecutar `python tests/test_loop_logic.py`, compilar/ejecutar `tests/test_loop_logic.cpp`, `build.ps1` y `tools/run-looper-flow.ps1` hasta `LOOPER_FLOW_RESULT=PASS`.
-    7. Validación manual en la ROM: mantener `SELECT`, tocar una frase de cada pista, abrir el editor común, mover una nota, cambiar `START`/`END`, cancelar con `B` y aceptar con `A`; no declarar validación física de DSi sin prueba explícita.
-    8. Actualizar `MANUAL.md`, `STATUS.md` y, solo si queda un problema real, `KNOWN_ISSUES.md`. Mover a `Revisión`, no a `Hecho`, hasta validar en hardware.
-  - **Guía de diagnóstico:**
-    - Si se repite `x3` completo, revisar `Phrase.start_ms + repetition * duration_ms`; no usar `phrase_count` como número de cajas.
-    - Si el playhead salta, trazar `transport_ms`, límites y overshoot; aplicar módulo sobre el span conservando overshoot.
-    - Si la rejilla deriva, comprobar origen y `time(step)` comunes; no mantener dos acumuladores ni reactivar un clic audible.
-    - Si editar una nota altera otra, comparar copia original/editable y clamps contra `previous.end_ms`/`next.start_ms`.
-    - Validar helpers host-side antes de emulador y recoger solo trazas o escenarios pertinentes según `AGENTS.md`.
-
 ## Todo
 
+- **K-010 — Timeline táctil, metrónomo y corrección rítmica mínima** [feature, ux, looper, ritmo, grabación]
 - **K-001 — Validación auditiva formal y DSi XL** [audio, hardware]
   - Comprobar audio con una prueba repetible y validar la ROM en hardware físico.
   - Terminado: Evidencia explícita de ambas pruebas; actualizar STATUS.md y KNOWN_ISSUES.md.
 
+## En curso
+
 ## Revisión
 
+- **K-005 — Panel FX compacto para vibrato y sustain** [ux, audio]
+  - Quitar glide y reutilizar la franja `160..192`: controles FX en modo normal y timeline de recorte durante la aceptación.
+  - Terminado: vibrato y cola de sustain ajustables con sliders tactiles cuantizados, sustain activado manteniendo `L`, sin tocar las 12 zonas cromaticas; tests, build y documentación actualizados.
+
+- **K-004 — Corregir píxeles sobrantes en los tiradores de recorte** [bug, ux, grabación]
+  - Separar visualmente los tiradores verdes `START`/`END` de sus etiquetas para que las letras no invadan la barra.
+  - Terminado: tiradores rectangulares sin píxeles salientes en la captura del menú de recorte; pruebas de lógica y build correctas.
+
+- **K-007 — Sustain: separar duración grabada y cola de reproducción** [bug, audio, grabación]
+  - Registrar el fin real de la pulsación aunque `L` mantenga una cola, y reproducir esa cola sin convertirla en una nota mantenida durante toda la duración.
+  - Terminado: pruebas host y build correctos; una captura con `L` produce un evento con fin al soltar la franja, conserva el timbre y reproduce una cola limitada por `SUS`; actualizar estado y manual.
+
+- **K-009 — Playhead verde en la preview de recorte** [feature, ux, grabación]
+  - Mostrar una barra verde que avance sobre el gráfico inferior mientras `START` reproduce el rango recortado.
+  - Terminado: la barra sigue el tiempo de preview dentro de `START..END`, desaparece al detener y la documentación queda actualizada.
+
+- **K-012 — Rediseño: compositor por descubrimiento de notas y paridad con ROM de la DS** [feature, ux, looper, composición]
+  - Historia de usuario: al escuchar una canción, quiero probar notas en el teclado de 2 octavas y colocarlas directamente en una línea temporal por pista, con ajuste fino inline (`DETAIL 2P`), vista macro de 20s arriba y los 17 timbres de la ROM de referencia.
+  - Terminado: tests host en verde, build BlocksDS sin errores y capturas comparativas de los escenarios de auditoría alineadas en estilo y funcionalidad con la ROM de referencia.
+
 ## Hecho
+
+- **K-016 — Control de Tempo (BPM) global con escalado temporal de eventos** [feature, ux, audio, composición] — **Hecho**
+  - **Alcance implementado:**
+    1. Atajo con gatillo `R`: `R + ←` ralentiza el tempo (-5 BPM / aumenta `pulse_ms`), `R + →` acelera (+5 BPM / reduce `pulse_ms`) en rango 60..240 BPM.
+    2. Escalado temporal proporcional de notas y duraciones de todas las pistas para preservar el ritmo, la duración musical y las relaciones intactas.
+    3. Visualización clara: indicador `BPM` en la cabecera del compositor táctil y en la barra de estado superior.
+    4. Soporte táctil dual: tocar la mitad izquierda de `BPM` en la cabecera ralentiza (-5 BPM) y la derecha acelera (+5 BPM) con el stylus.
+    5. Pulsación de `R` pospuesta al soltar: evita conmutar accidentalmente el metrónomo al usar combinaciones con `R` (`R + ←`/`→` o `R + B`).
+    6. Ayuda `CONTROLS` y documentación en `MANUAL.md` y `STATUS.md` actualizadas.
+  - **Validación:** tests de lógica en host C++ (`test_loop_logic.cpp`) y Python (`test_loop_logic.py`) en verde; flujo integrado `run-looper-flow.ps1` con `LOOPER_FLOW_RESULT=PASS`; compilación limpia BlocksDS en `ds-stylophone.nds`.
+
+- **K-008 — Y: decidir loop al soltar tras comprobar navegación** [bug, ux, looper] — **Hecho**
+  - Posponer la conmutación de loop hasta soltar `Y`; izquierda/derecha (y el ajuste de frases) consume la pulsación sin apagar el loop.
+  - Terminado: prueba de lógica para soltar `Y` sin acción y para navegar mientras se mantiene; build correcto y comportamiento documentado.
+
+- **K-013 — Fase 1: Limpieza de vistas, Compases 4/4 y 3/4, Ghost Notes y Controles del Compositor** [feature, ux, compositor] — **Hecho**
+  - **Alcance implementado:**
+    1. Eliminado el modo `DETAIL 2P` y `TRIM`: el teclado cromático de 2 filas (`0..11`, `y=143..191`) con botones de octava `+`/`-` permanece siempre visible y operativo.
+    2. Rectángulo amarillo/naranja en la pantalla macro superior (`0S..20S`) que delimita exactamente la ventana visible en la pantalla inferior.
+    3. Soporte para alternar compás entre `4/4` y `3/4` tocando la cabecera, con fondo en cebra alterna por compás y líneas de pulso claras.
+    4. Sombras de pistas (Ghost Notes): las demás pistas activas se muestran en gris suave con su índice `0..11` para componer armonías.
+    5. Controles completos del compositor: preescucha + estampar con `A`, edición de tono con cruceta `↑`/`↓`, desplazamiento temporal con `←`/`→`, redimensión de duración con `L + ←`/`→`, selección rectangular con `L + Stylus`, clonado de bloques/compases con `L + A`, borrado con `B`, pan libre con stylus en vacío y reproducción contextual desde el inicio del compás con `START`.
+  - **Validación:** tests host en C++ (`test_loop_logic.cpp`) y Python (`test_loop_logic.py`) en verde; compilación limpia BlocksDS en `ds-stylophone.nds`.
+
+- **K-014 — Fase 2: Rediseño sonoro, volumen/envolventes y paleta de 10 instrumentos + kit percusión** [audio, timbres] — **Hecho**
+  - **Alcance implementado:**
+    1. Motor de volumen y compensación corregido: volumen nominal unificado a `95/127` para preescucha y loop, con compensación suave de graves/agudos.
+    2. Envolvente por software ADSR (ataque suave de 15 ms, decay y sostenido al 70%) para las voces PSG (`CHIP LEAD`, `CHIP WAVE`), eliminando clics y pitidos planos.
+    3. Paleta definitiva de 10 timbres: `BRASS` (heroico), `STRINGS` (cálidas), `CHOIR` (coro gregoriano con formantes *"Ohhh"* en graves y *"Ahhh"* en agudos), `FLUTE` (con aire), `PIANO` (Rhodes de caída natural), `PLUCK` (arpa), `BASS` (redondo para altavoces DS), `CHIP LEAD` (pulso 50% con envolvente), `CHIP WAVE` (pulso 12% con envolvente) y `DRUMS` (kit de percusión de 12 sonidos asignados a las teclas `0..11`).
+  - **Validación:** muestras binarias integradas, tests C++ y Python pasando, `run-looper-flow.ps1` finalizado con `LOOPER_FLOW_RESULT=PASS` y compilación canónica en `build.ps1`.
+
+- **K-015 — Fase 3: Documentación, pantalla de ayuda CONTROLS y Manual del Pequeño Compositor** [docs, ux] — **Hecho**
+  - **Alcance implementado:**
+    1. Pantalla de ayuda `CONTROLS` (`SELECT` mantenido) actualizada con los controles reales del compositor.
+    2. `MANUAL.md` actualizado con los nuevos diagramas, controles, los 10 timbres y la sección "Manual del Pequeño Compositor" con guía de compases `4/4` vs `3/4`, sombras de notas y reglas armónicas numéricas (`+0`, `+3/+4`, `+7`).
+    3. `STATUS.md` y `SAMPLES.md` actualizados eliminando menciones a sistemas obsoletos.
+  - **Validación:** documentación completa, sin contradicciones y alineada con la especificación de `DESIGN.md`.

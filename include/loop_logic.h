@@ -74,6 +74,249 @@ inline PulseGridLineKind pulse_grid_line_kind(uint32_t step, uint8_t beats_per_b
     return GRID_SUBDIVISION;
 }
 
+enum TimeSignature : uint8_t {
+    TIME_4_4 = 4,
+    TIME_3_4 = 3
+};
+
+inline uint32_t bar_duration_ms(uint32_t pulse_ms, uint8_t beats_per_bar) {
+    if (beats_per_bar == 0) beats_per_bar = 4;
+    return (uint32_t)beats_per_bar * pulse_ms;
+}
+
+inline uint32_t bar_index_for_time(uint32_t time_ms, uint32_t pulse_ms, uint8_t beats_per_bar) {
+    uint32_t bar_dur = bar_duration_ms(pulse_ms, beats_per_bar);
+    return bar_dur == 0 ? 0 : time_ms / bar_dur;
+}
+
+inline bool is_bar_even(uint32_t time_ms, uint32_t pulse_ms, uint8_t beats_per_bar) {
+    return (bar_index_for_time(time_ms, pulse_ms, beats_per_bar) % 2u) == 0;
+}
+
+inline uint32_t bar_start_time(uint32_t bar_index, uint32_t pulse_ms, uint8_t beats_per_bar) {
+    return bar_index * bar_duration_ms(pulse_ms, beats_per_bar);
+}
+
+struct NoteSelection {
+    bool selected[MAX_TRACK_EVENTS];
+    uint16_t count;
+
+    void clear() {
+        for (uint16_t i = 0; i < MAX_TRACK_EVENTS; ++i) selected[i] = false;
+        count = 0;
+    }
+
+    void select_single(uint16_t index) {
+        clear();
+        if (index < MAX_TRACK_EVENTS) {
+            selected[index] = true;
+            count = 1;
+        }
+    }
+
+    void add(uint16_t index) {
+        if (index < MAX_TRACK_EVENTS && !selected[index]) {
+            selected[index] = true;
+            ++count;
+        }
+    }
+
+    void remove(uint16_t index) {
+        if (index < MAX_TRACK_EVENTS && selected[index]) {
+            selected[index] = false;
+            if (count > 0) --count;
+        }
+    }
+
+    void toggle(uint16_t index) {
+        if (index >= MAX_TRACK_EVENTS) return;
+        if (selected[index]) remove(index);
+        else add(index);
+    }
+
+    bool is_selected(uint16_t index) const {
+        return index < MAX_TRACK_EVENTS && selected[index];
+    }
+
+    bool has_selection() const { return count > 0; }
+
+    int first_selected_index() const {
+        for (uint16_t i = 0; i < MAX_TRACK_EVENTS; ++i) {
+            if (selected[i]) return (int)i;
+        }
+        return -1;
+    }
+};
+
+inline void select_notes_in_rect(NoteSelection& sel, const Track& track,
+                                 uint32_t rect_start_ms, uint32_t rect_end_ms,
+                                 int low_midi, int high_midi) {
+    for (uint16_t i = 0; i < track.event_count; ++i) {
+        const NoteEvent& ev = track.events[i];
+        if (ev.start_ms < rect_end_ms && ev.end_ms > rect_start_ms &&
+            (int)ev.midi_note >= low_midi && (int)ev.midi_note <= high_midi) {
+            sel.add(i);
+        }
+    }
+}
+
+inline bool transpose_selection(Track& track, const NoteSelection& sel, int semitones) {
+    if (!sel.has_selection() || semitones == 0) return false;
+    for (uint16_t i = 0; i < track.event_count; ++i) {
+        if (!sel.is_selected(i)) continue;
+        int next = (int)track.events[i].midi_note + semitones;
+        if (next < 0 || next > 127) return false;
+    }
+    for (uint16_t i = 0; i < track.event_count; ++i) {
+        if (sel.is_selected(i)) {
+            track.events[i].midi_note = (int16_t)(track.events[i].midi_note + semitones);
+        }
+    }
+    return true;
+}
+
+inline bool move_selection_time(Track& track, const NoteSelection& sel, int32_t delta_ms,
+                                uint32_t max_content_ms) {
+    if (!sel.has_selection() || delta_ms == 0) return false;
+    for (uint16_t i = 0; i < track.event_count; ++i) {
+        if (!sel.is_selected(i)) continue;
+        int64_t n_start = (int64_t)track.events[i].start_ms + delta_ms;
+        int64_t n_end = (int64_t)track.events[i].end_ms + delta_ms;
+        if (n_start < 0 || (uint32_t)n_end > max_content_ms) return false;
+    }
+    for (uint16_t i = 0; i < track.event_count; ++i) {
+        if (sel.is_selected(i)) {
+            track.events[i].start_ms = (uint32_t)((int64_t)track.events[i].start_ms + delta_ms);
+            track.events[i].end_ms = (uint32_t)((int64_t)track.events[i].end_ms + delta_ms);
+        }
+    }
+    track.duration_ms = 0;
+    for (uint16_t i = 0; i < track.event_count; ++i) {
+        if (track.events[i].end_ms > track.duration_ms)
+            track.duration_ms = track.events[i].end_ms;
+    }
+    return true;
+}
+
+inline bool resize_selection_duration(Track& track, const NoteSelection& sel, int32_t delta_ms,
+                                      uint32_t min_duration_ms, uint32_t max_content_ms) {
+    if (!sel.has_selection() || delta_ms == 0) return false;
+    for (uint16_t i = 0; i < track.event_count; ++i) {
+        if (!sel.is_selected(i)) continue;
+        int64_t n_end = (int64_t)track.events[i].end_ms + delta_ms;
+        if (n_end < (int64_t)track.events[i].start_ms + (int64_t)min_duration_ms) return false;
+        if ((uint32_t)n_end > max_content_ms) return false;
+    }
+    for (uint16_t i = 0; i < track.event_count; ++i) {
+        if (sel.is_selected(i)) {
+            track.events[i].end_ms = (uint32_t)((int64_t)track.events[i].end_ms + delta_ms);
+        }
+    }
+    track.duration_ms = 0;
+    for (uint16_t i = 0; i < track.event_count; ++i) {
+        if (track.events[i].end_ms > track.duration_ms)
+            track.duration_ms = track.events[i].end_ms;
+    }
+    return true;
+}
+
+inline uint16_t delete_selection(Track& track, NoteSelection& sel) {
+    if (!sel.has_selection() || track.event_count == 0) return 0;
+    uint16_t write_idx = 0;
+    uint16_t deleted = 0;
+    for (uint16_t read_idx = 0; read_idx < track.event_count; ++read_idx) {
+        if (sel.is_selected(read_idx)) {
+            ++deleted;
+        } else {
+            if (write_idx != read_idx) track.events[write_idx] = track.events[read_idx];
+            ++write_idx;
+        }
+    }
+    track.event_count = write_idx;
+    track.duration_ms = 0;
+    for (uint16_t i = 0; i < track.event_count; ++i) {
+        if (track.events[i].end_ms > track.duration_ms)
+            track.duration_ms = track.events[i].end_ms;
+    }
+    if (track.event_count == 0) track.occupied = false;
+    sel.clear();
+    return deleted;
+}
+
+inline bool clone_selection(Track& track, NoteSelection& sel, uint32_t offset_ms,
+                            uint32_t max_content_ms) {
+    if (!sel.has_selection() || offset_ms == 0) return false;
+    if ((uint32_t)track.event_count + sel.count > MAX_TRACK_EVENTS) return false;
+    uint16_t old_count = track.event_count;
+    uint16_t new_count = old_count;
+    NoteSelection new_sel{};
+    for (uint16_t i = 0; i < old_count; ++i) {
+        if (!sel.is_selected(i)) continue;
+        NoteEvent cloned = track.events[i];
+        cloned.start_ms += offset_ms;
+        cloned.end_ms += offset_ms;
+        if (cloned.end_ms > max_content_ms) return false;
+        track.events[new_count] = cloned;
+        new_sel.add(new_count);
+        ++new_count;
+        if (cloned.end_ms > track.duration_ms)
+            track.duration_ms = cloned.end_ms;
+    }
+    track.event_count = new_count;
+    track.occupied = (new_count > 0);
+    sel = new_sel;
+    return true;
+}
+
+inline bool clone_last_bar_or_selection(Track& track, NoteSelection& sel,
+                                        uint32_t pulse_ms, uint8_t beats_per_bar,
+                                        uint32_t max_content_ms) {
+    uint32_t bar_dur = bar_duration_ms(pulse_ms, beats_per_bar);
+    if (bar_dur == 0) return false;
+    if (sel.has_selection()) {
+        uint32_t min_start = UINT32_MAX;
+        uint32_t max_end = 0;
+        for (uint16_t i = 0; i < track.event_count; ++i) {
+            if (sel.is_selected(i)) {
+                if (track.events[i].start_ms < min_start) min_start = track.events[i].start_ms;
+                if (track.events[i].end_ms > max_end) max_end = track.events[i].end_ms;
+            }
+        }
+        uint32_t span = (max_end > min_start) ? (max_end - min_start) : bar_dur;
+        uint32_t bars_needed = (span + bar_dur - 1) / bar_dur;
+        if (bars_needed == 0) bars_needed = 1;
+        uint32_t offset = bars_needed * bar_dur;
+        return clone_selection(track, sel, offset, max_content_ms);
+    }
+    if (track.event_count == 0) return false;
+    uint32_t last_end = track.duration_ms;
+    if (last_end == 0) return false;
+    uint32_t last_bar_idx = (last_end - 1) / bar_dur;
+    uint32_t bar_start = last_bar_idx * bar_dur;
+    uint32_t bar_end = bar_start + bar_dur;
+    NoteSelection bar_sel{};
+    for (uint16_t i = 0; i < track.event_count; ++i) {
+        if (track.events[i].start_ms >= bar_start && track.events[i].start_ms < bar_end) {
+            bar_sel.add(i);
+        }
+    }
+    if (!bar_sel.has_selection()) return false;
+    sel = bar_sel;
+    return clone_selection(track, sel, bar_dur, max_content_ms);
+}
+
+inline uint32_t contextual_playback_start(uint32_t current_cursor_ms, const NoteSelection& sel,
+                                          const Track& track, uint32_t pulse_ms,
+                                          uint8_t beats_per_bar) {
+    uint32_t bar_dur = bar_duration_ms(pulse_ms, beats_per_bar);
+    if (bar_dur == 0) return current_cursor_ms;
+    int first_idx = sel.first_selected_index();
+    if (first_idx >= 0 && first_idx < (int)track.event_count) {
+        return (track.events[first_idx].start_ms / bar_dur) * bar_dur;
+    }
+    return (current_cursor_ms / bar_dur) * bar_dur;
+}
+
 static constexpr int TIMELINE_LEFT_X = 91;
 static constexpr int TIMELINE_RIGHT_X = 251;
 static constexpr int COMPOSER_TIMELINE_LEFT_X = 18;
@@ -618,6 +861,70 @@ inline bool event_active(const NoteEvent& event, uint32_t phase) {
 }
 
 inline bool should_toggle_loop_on_release(bool pending, bool direction_used, bool released) {
+    return pending && released && !direction_used;
+}
+
+static constexpr uint32_t MIN_BPM = 60;
+static constexpr uint32_t MAX_BPM = 240;
+static constexpr uint32_t DEFAULT_BPM = 120;
+static constexpr uint32_t BPM_STEP = 5;
+
+inline uint32_t bpm_for_pulse_ms(uint32_t pulse_ms) {
+    if (pulse_ms == 0) return DEFAULT_BPM;
+    return (60000u + pulse_ms / 2u) / pulse_ms;
+}
+
+inline uint32_t pulse_ms_for_bpm(uint32_t bpm) {
+    if (bpm == 0) return 500;
+    return (60000u + bpm / 2u) / bpm;
+}
+
+inline uint32_t adjust_tempo_pulse_ms(uint32_t current_pulse_ms, int direction) {
+    uint32_t bpm = bpm_for_pulse_ms(current_pulse_ms);
+    bpm = ((bpm + 2u) / BPM_STEP) * BPM_STEP;
+    if (direction > 0) {
+        if (bpm + BPM_STEP <= MAX_BPM) bpm += BPM_STEP;
+        else bpm = MAX_BPM;
+    } else if (direction < 0) {
+        if (bpm >= MIN_BPM + BPM_STEP) bpm -= BPM_STEP;
+        else bpm = MIN_BPM;
+    }
+    return pulse_ms_for_bpm(bpm);
+}
+
+inline uint32_t scale_timestamp(uint32_t time_ms, uint32_t old_pulse_ms, uint32_t new_pulse_ms) {
+    if (old_pulse_ms == 0 || old_pulse_ms == new_pulse_ms) return time_ms;
+    return (uint32_t)(((uint64_t)time_ms * new_pulse_ms + old_pulse_ms / 2u) / old_pulse_ms);
+}
+
+inline void scale_track_tempo(Track& track, uint32_t old_pulse_ms, uint32_t new_pulse_ms,
+                              uint32_t content_limit_ms = 60000) {
+    if (old_pulse_ms == 0 || new_pulse_ms == 0 || old_pulse_ms == new_pulse_ms) return;
+    for (uint16_t i = 0; i < track.event_count; ++i) {
+        NoteEvent& ev = track.events[i];
+        uint32_t new_start = scale_timestamp(ev.start_ms, old_pulse_ms, new_pulse_ms);
+        uint32_t new_end = scale_timestamp(ev.end_ms, old_pulse_ms, new_pulse_ms);
+        uint32_t min_dur = new_pulse_ms / 4u > 0 ? new_pulse_ms / 4u : 1u;
+        if (new_end <= new_start) {
+            new_end = new_start + min_dur;
+        }
+        if (content_limit_ms > 0) {
+            if (new_start >= content_limit_ms) new_start = content_limit_ms > min_dur ? content_limit_ms - min_dur : 0;
+            if (new_end > content_limit_ms) new_end = content_limit_ms;
+            if (new_end <= new_start) new_end = new_start + 1;
+        }
+        ev.start_ms = new_start;
+        ev.end_ms = new_end;
+    }
+    if (track.duration_ms > 0) {
+        track.duration_ms = scale_timestamp(track.duration_ms, old_pulse_ms, new_pulse_ms);
+        track.duration_ms = snap_loop_duration(track.duration_ms, new_pulse_ms);
+        if (content_limit_ms > 0 && track.duration_ms > content_limit_ms)
+            track.duration_ms = content_limit_ms;
+    }
+}
+
+inline bool should_toggle_metronome_on_release(bool pending, bool direction_used, bool released) {
     return pending && released && !direction_used;
 }
 

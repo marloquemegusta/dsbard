@@ -11,3 +11,5 @@ tests/*.exe
 artifacts/
 .official-nds-examples/
 .tools/
+__pycache__/
+graphify-out/
